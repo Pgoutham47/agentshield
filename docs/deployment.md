@@ -15,7 +15,7 @@ Open http://127.0.0.1:8000 using the operator token in `data/local-tokens.json`.
 
 The [hosting handoff](../deploy/README.md) describes account setup and deployment. `render.yaml` selects **Render Free**, one instance, one worker, no disk, and fixture analysis with no paid model calls. Durable state lives in a **Supabase Free** PostgreSQL project. No paid services or add-ons are authorized.
 
-The PostgreSQL implementation has real database tests for reservations, replay prevention, pending approvals, audit integrity, restart persistence, separate-process execution ownership, and crash recovery. Hosted Render, Supabase's managed pooler, and installed GitHub App authentication still require live verification after account access. Local PostgreSQL tests are not evidence of a completed cloud deployment.
+The PostgreSQL implementation has real database tests for reservations, replay prevention, pending approvals, audit integrity, restart persistence, separate-process execution ownership, and crash recovery. The hosted pilot is now verified on Render Free, Supabase's managed session pooler, and installed GitHub App authentication. A task and pending approval survived redeployment; the hosted API produced sandbox draft PR #3. See the handoff for resource links and exact evidence.
 
 Use the Supabase **session pooler on port 5432** with `sslmode=require` (or certificate verification). This provides IPv4 connectivity without purchasing the IPv4 add-on. Do not use the transaction pooler on port 6543: execution ownership requires session advisory locks. Store the database URI in Render's secret environment as `DATABASE_URL`; encode reserved password characters. Never put it in frontend code, source control, chat, or agent credentials.
 

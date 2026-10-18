@@ -1,60 +1,60 @@
-# Hosting handoff
+# Hosted pilot handoff
 
-Status: deployment source prepared; the user will create the Supabase project and deploy Render manually. GitHub App registration is still pending. No App ID or installation ID has been created or invented.
+Status: deployed and verified on 18 October 2026. All resources created for this pilot use free plans. No paid disk, IPv4 add-on, database, or model service was purchased.
 
-## Manual deployment: user steps
+| Resource | Configuration |
+| --- | --- |
+| Product | [AgentShield](https://agentshield-prototype.onrender.com) |
+| Render service | `srv-dba7aolg1s2s73b2ai00`, Free, Singapore, one worker, no disk |
+| Render Blueprint | `agentshield-free`, `exs-dba79t3rjlhs7396daf0` |
+| Source | [Pgoutham47/agentshield](https://github.com/Pgoutham47/agentshield), `main` |
+| Supabase | [AgentShield](https://supabase.com/dashboard/project/oanpbakftuafjikwkzzp), Free, Singapore, project `oanpbakftuafjikwkzzp` |
+| Database | Private `agentshield` schema; TLS session pooler on port 5432 |
+| GitHub App | [AgentShield Pgoutham47 Pilot](https://github.com/settings/apps/agentshield-pgoutham47-pilot), App ID `5366143` |
+| Installation | `172622857`, only `Pgoutham47/agentshield-github-sandbox` |
 
-You can create Supabase and deploy Render yourself; no browser account sharing is required.
+## Access and credentials
 
-1. Create a Supabase **Free** project, preferably in Singapore, and save its database password. Open **Connect**, choose the **session pooler**, and copy the PostgreSQL URI on **port 5432**. Replace the password placeholder with the URL-encoded database password and include `sslmode=require` (use `&` if the URI already has query parameters). The app uses this database connection, not a publishable/anon or service-role API key.
-2. In Render, choose **New → Blueprint**, connect GitHub, and select the private `Pgoutham47/agentshield` repository and `main` branch. Use its root `render.yaml`. If the repository is missing, grant Render's GitHub integration access to this deployment repository.
-3. Set the prompted `DATABASE_URL` directly in Render. Check that the service plan is **Free**, with no disk or additional database, then deploy. The Blueprint supplies build/start commands and creates four distinct role tokens automatically. Do not add GitHub App variables until the App and its PEM secret file are ready.
-4. Open the service's HTTPS URL. Use `AGENTSHIELD_OPERATOR_TOKEN` from Render's Environment settings to sign into the console. `/health` should return `status: ok` and `storage: postgresql`.
-5. Send the public Render URL back for verification. Do not send the database password, connection URI, role tokens, API keys, or PEM in chat. If deployment fails, share the error text with secrets removed.
+Use `AGENTSHIELD_OPERATOR_TOKEN` from [Render Environment](https://dashboard.render.com/web/srv-dba7aolg1s2s73b2ai00/env) to enter the console. The browser used for verification is already signed in. Reviewer, developer, and worker tokens are separate; never give an agent the operator or reviewer token.
 
-A new deployment starts with an empty history unless the offline import procedure is run first. Existing local SQLite history is preserved locally; creating the cloud project does not transfer it automatically. If retaining that history in the cloud is desired, arrange the import before creating new hosted tasks; the importer refuses a populated target.
+`DATABASE_URL` is stored in Render's secret environment. The App PEM is the secret file `github-app.pem`, read at `/etc/secrets/github-app.pem`. Neither belongs in Git or chat. Protected local copies of the PEM and gateway tokens are under the ignored `data/hosting/` directory for the operator's verification workflow. The database password was generated during project setup and is available inside Render's protected connection URI. Supabase API keys are not used.
 
-The next setup step is the GitHub App below. The App ID and installation ID can be shared as nonsecret identifiers. The private PEM belongs in Render's secret-file store. No paid AI key is needed for this pilot.
+The Supabase Data API was disabled at project creation. Application migrations enable RLS and revoke browser-role privileges on the private schema. Do not expose this schema through browser APIs.
 
-## GitHub App
+## Verified behavior
 
-[Open the prefilled App registration form](https://github.com/settings/apps/new?name=AgentShield+Pgoutham47+Pilot&description=Task-bound+authorization+for+a+private+synthetic+coding-agent+pilot.&url=https%3A%2F%2Fgithub.com%2FPgoutham47%2Fagentshield&public=false&webhook_active=false&request_oauth_on_install=false&contents=write&issues=write&pull_requests=write&metadata=read). This uses GitHub's documented URL parameters. Review the form before creating it: private App, Contents/Issues/Pull requests read and write, Metadata read, webhooks disabled, no user OAuth flow. The same nonsecret definition is in `github-app.json`.
+- HTTPS console and PostgreSQL health check respond successfully; unauthenticated API calls return 401.
+- A mock task and its pending approval survived a hosted redeploy.
+- Hosted GitHub App verification resolves only the configured sandbox repository.
+- Hosted task `t_a3295109dbd64a7e` read the issue/files, rejected internal-configuration publication, denied a different-repository read, rejected grant replay, and created a reviewed branch, commit, and [draft PR #3](https://github.com/Pgoutham47/agentshield-github-sandbox/pull/3).
+- Both Node regression checks passed against the exact draft PR commit.
+- The exported 72-event audit chain verified after this run. Evidence is saved locally in `output/hosted-verification.json` and its adjacent audit export.
 
-Create it under **Pgoutham47**, then install it on **only `agentshield-github-sandbox`**. Do not install this agent executor on its own deployment repository. Generate a private key and keep it outside Git, under a protected local folder or the hosting secret-file store. Record the App ID and installation ID; these identifiers are not credentials.
+Proposals, contextual signals, and reviews in this verification were scripted synthetic fixtures. This is integration evidence, not a live-model detection benchmark. The PR is unmerged, and no issue comment was published by this hosted verification.
 
-## Supabase Free
+The initial cloud history is fresh; older SQLite demonstration history remains local and was not overwritten. The offline importer requires an empty destination and cannot merge those histories into this populated cloud database.
 
-Sign in to Supabase, select an organization on the **Free** plan, and create a free project in Singapore if a free project slot is available. Do not purchase compute, IPv4, backups, or plan upgrades. Keep the generated database password in a password manager/server secret store.
+## Operating the pilot
 
-From the project's Connect dialog, select the **session pooler (5432)** and copy its PostgreSQL URI into Render's `DATABASE_URL` secret. URL-encode reserved password characters and include `?sslmode=require`. Transaction pooling (6543) is incompatible with the execution locks. Use the database connection URI, not the Supabase API URL or anonymous key.
+`render.yaml` is authoritative for nonsecret configuration and stays on `plan: free`. `GITHUB_ENABLE_WRITES=true` was enabled after successful read verification; exact-action approval remains mandatory for every GitHub mutation. To stop provider writes, change it to `false` in the Blueprint and deploy. Never widen the App installation to the deployment repository or unrelated projects.
 
-The app creates a private `agentshield` schema with RLS and no browser-role grants. Keep it out of exposed API schemas. See [database design and offline import](../docs/deployment.md) to preserve the existing local history before the first hosted run.
+To rerun the hosted verification, use a protected JSON token file with `developer`, `worker`, and `reviewer` fields:
 
-## Render Free
+```sh
+uv run python scripts/verify_hosted.py \
+  --url https://agentshield-prototype.onrender.com \
+  --tokens data/hosting/render-tokens.json \
+  --approve-sandbox-writes
+```
 
-The private deployment source is `Pgoutham47/agentshield`. Render's GitHub connection needs access to this repository; it is separate from the executor App installed on the sandbox.
+Each invocation creates another branch, commit, and draft PR. It never merges or automatically retries writes. After an unknown outcome, investigate the saved trace and remote state before any further attempt.
 
-Create a Blueprint from `render.yaml`. Confirm **Free**, one Singapore instance, **no disk**, and no paid database/service/add-on. Supply `DATABASE_URL` securely. Four role tokens are generated. The initial service starts without GitHub App credentials, with fixture analysis and writes disabled. There are no paid model calls. Do not proceed if the dashboard requires a paid resource.
+Free Render sleeps with inactivity, and free Supabase projects can pause. Stay within free quotas; do not upgrade or buy add-ons to resolve a limit. No always-on or high-availability guarantee is made. Keep one instance/worker and synthetic workloads.
 
-To connect the GitHub App after registration, add these environment settings:
+## Recreating the deployment
 
-- `AGENTSHIELD_GITHUB_REPOSITORY=Pgoutham47/agentshield-github-sandbox`
-- `GITHUB_APP_ID`: registered App ID
-- `GITHUB_INSTALLATION_ID`: selected-repository installation ID
-- `GITHUB_PRIVATE_KEY_PATH=/etc/secrets/github-app.pem`
+Do not create duplicates of the running resources. If recovery requires a new project, select Supabase Free in Singapore and use its **session pooler on 5432** with `sslmode=require`; never buy the IPv4 add-on. Passwords with reserved characters must be URL-encoded. Transaction pooling on 6543 is unsupported by execution session locks.
 
-Add the PEM as a Render secret file named `github-app.pem`. Keep `GITHUB_AUTH_MODE=app` and `GITHUB_ENABLE_WRITES=false` until the reviewer/operator's `GET /v1/integrations/github?verify=true` succeeds and the selected repository is correct. Do not put the private key or role tokens in Git or chat. A configured App with a missing key intentionally prevents startup.
+In Render choose **New → Blueprint**, select the deployment repository and `main`, supply `DATABASE_URL`, and confirm Free with no disk or additional database. The current Blueprint includes App identifiers: add the matching PEM secret file before expecting startup to succeed, or prepare a bootstrap configuration without GitHub variables and with writes disabled. Render generates four role tokens. Restore/import the intended database before accepting new writes, following [the offline import procedure](../docs/deployment.md).
 
-Enable sandbox writes only after verification by changing the Blueprint's `GITHUB_ENABLE_WRITES` to `"true"` and deploying that reviewed configuration change. A Dashboard override may be reset by Blueprint sync. Exact-action review remains mandatory for each write.
-
-## Verify after deployment
-
-1. Confirm HTTPS console and `/health`, including `storage: postgresql`. API calls without a bearer token must return 401.
-2. Sign in with Render's generated operator token. Run a mock scenario, record its task ID, restart/redeploy, and verify task/audit history survives.
-3. Verify GitHub App read access with writes disabled. After enabling reviewed sandbox writes, exercise the six-operation flow and inspect the resulting draft PR and audit.
-4. Confirm the account billing pages still show free resources. Free Render sleeps after inactivity; Supabase may pause an inactive free project. Do not create keep-alive traffic or silently upgrade to bypass limits.
-5. Keep one instance/worker. Unknown remote outcomes require investigation, not automatic retry.
-
-Current status: PostgreSQL migration and local real-database tests completed; cloud resources and App registration are awaiting account sign-ins. No cloud deployment or Supabase pooler verification is claimed.
-
-References: [GitHub App URL parameters](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-using-url-parameters), [Render Blueprint fields](https://render.com/docs/blueprint-spec), [Render Free](https://render.com/docs/free), [Supabase Free](https://supabase.com/pricing).
+References: [Render Free](https://render.com/docs/free), [Blueprint fields](https://render.com/docs/blueprint-spec), [Supabase connection modes](https://supabase.com/docs/guides/database/connecting-to-postgres).

@@ -64,7 +64,7 @@ The workload is scripted. These runs demonstrate what the gateway does when an a
 
 **Tier 1 is not included. Cedar is not included.** The prototype uses explicit policy functions so decision order and failure behavior are directly testable. This is a deliberate prototype deviation from PRD D03/D07; see [architecture decisions](docs/architecture.md).
 
-Not included: installed production GitHub App, isolated credential broker, sandbox runner, egress proxy, MCP gateway, SSO, production RBAC, signed policy distribution, policy simulation, gitleaks integration, retention/deletion, SIEM/webhook delivery, multi-instance availability, signed audit checkpoints, or production-scale benchmarks. The small secret-pattern detector is not a complete secrets scanner.
+Not included: production GitHub installation discovery, isolated credential broker, sandbox runner, egress proxy, MCP gateway, SSO, production RBAC, signed policy distribution, policy simulation, gitleaks integration, retention/deletion, SIEM/webhook delivery, multi-instance availability, signed audit checkpoints, or production-scale benchmarks. The small secret-pattern detector is not a complete secrets scanner.
 
 The database contains full synthetic proposals needed for exact approvals and mock files. It has no encryption or automated retention. **Use synthetic data only.** A hash chain detects accidental changes and gaps but is not independently anchored against an administrator rewriting the entire database. Unknown execution outcomes require investigation; there is no real-provider reconciliation implementation.
 
@@ -135,8 +135,8 @@ The public models are in `src/agentshield/models.py`, and `AgentShieldClient` is
 
 [Deployment instructions](docs/deployment.md) and the [hosting handoff](deploy/README.md) include a **free Render + Supabase** configuration and prefilled private GitHub App registration. Hosted mode requires explicit role tokens and a TLS PostgreSQL connection. Render has no paid disk or database, and fixture analysis makes no paid model calls. Supabase uses its free IPv4-compatible session pooler on port 5432.
 
-The PostgreSQL migration, offline SQLite importer, and recovery are tested against real PostgreSQL. Cloud account access is still needed: no hosted deployment or Supabase pooler verification has been completed. Free services can sleep or pause. Keep one instance and worker for this synthetic pilot; production availability and customer identity remain future work.
+The PostgreSQL migration, offline SQLite importer, and recovery are tested against real PostgreSQL. The [hosted pilot](https://agentshield-prototype.onrender.com) is live on Render Free with Supabase Free. The session pooler, hosted redeploy persistence, App authentication, and a reviewed sandbox draft PR have been verified. Free services can sleep or pause. Keep one instance and worker for this synthetic pilot; production availability and customer identity remain future work.
 
-App authentication is implemented and transport-tested; the live sandbox run used the existing local CLI login. The console stays alongside the API on Render. No separate Vercel service is needed.
+The initial live sandbox run used local CLI login; the hosted run used the installed GitHub App and produced [draft PR #3](https://github.com/Pgoutham47/agentshield-github-sandbox/pull/3). The console stays alongside the API on Render. No separate Vercel service is needed.
 
 See [product positioning](docs/product-positioning.md) and [requirements status](docs/requirements-status.md) for the first customer hypothesis, explicit scope, and remaining release gates.

@@ -18,7 +18,7 @@ The prototype brief governs this iteration. The PRD remains the production refer
 | FR20 audit | Transactional append-only outbox and hash chain; redaction test | Signing, external checkpoints, encryption, archival |
 | T14 evaluation | 60 unique synthetic proposals × off/fixture; optional live mode | Real model run, classifier tier, held-out attacks, cost, uncertainty intervals |
 | FR24 SDK | Async Python client and end-to-end SDK test | Versioned published package and connector conformance |
-| FR03/FR09 / T03 | GitHub App token broker implemented and transport-tested; CLI-authenticated sandbox verified | Isolated broker/runner, egress controls, bypass tests, installed App live verification |
+| FR03/FR09 / T03 | GitHub App token broker implemented and transport-tested; CLI-authenticated sandbox verified | Isolated broker/runner, egress controls, bypass tests, production installation discovery |
 | FR10 / T02 | Not implemented | Manifest pinning, drift quarantine, MCP gateway |
 | FR19/FR21/FR22 | Not implemented | Webhook export, policy lifecycle, retention/deletion |
 
@@ -34,4 +34,4 @@ The prototype brief governs this iteration. The PRD remains the production refer
 - The limited secret detector is not gitleaks and cannot detect all encoded secrets or private data.
 - Approval checks and execution work through the backend API. The console's scenario C deliberately continues safe work, so its pending approval will normally be stale for approval and still rejectable.
 - The UI reads up to 100 task runs and the first 1,000 events. Full JSONL export includes all events for the tenant. Production pagination/streaming remains work.
-- Local API tests pass. Real GitHub was exercised against a private disposable repository; see the integration guide and output trace. Live Anthropic, installed GitHub App auth, hosted Render, and Supabase remain unverified.
+- Local API tests pass. Real GitHub was exercised against a private disposable repository; see the integration guide and output trace. The Render Free + Supabase Free pilot and installed GitHub App were verified through the hosted API, including persistence across redeploy and sandbox draft PR #3. Live Anthropic and production availability remain unverified.

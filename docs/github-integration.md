@@ -10,6 +10,12 @@ The gateway read the issue and files, held and rejected the configuration commen
 
 The recorded trace is `output/github-verification.json`, with its audit export beside it. Proposals and approval decisions were scripted, and contextual signals were fixtures. The operator explicitly enabled the sandbox reviewer for this user-authorized test; this is not evidence of human review quality or live-model injection detection. Real GitHub REST calls and provider request IDs were recorded. GitHub App authentication has contract tests but was not used for this live run.
 
+## Hosted GitHub App verification
+
+On 18 October 2026, the [Render-hosted API](https://agentshield-prototype.onrender.com) with Supabase Free persistence and GitHub App installation `172622857` repeated the bounded workflow and created [draft PR #3](https://github.com/Pgoutham47/agentshield-github-sandbox/pull/3). The App is installed only on the disposable sandbox. The internal comment was rejected, the unrelated-repository read was denied, and a consumed read grant was rejected on replay. No issue comment or merge was performed by this hosted run.
+
+Task `t_a3295109dbd64a7e` and the 72-event exported audit chain are recorded in `output/hosted-verification.json` and `output/hosted-verification.audit.jsonl`. Mock task `t_8050a8d861c547e7` and its pending approval survived redeployment. These results use fixture analysis and an explicitly enabled scripted sandbox reviewer. Run `scripts/verify_hosted.py` only with the explicit sandbox-write flag; each run creates new GitHub artifacts. See [the hosting handoff](../deploy/README.md).
+
 ## Local authentication used for this demonstration
 
 This path requires an already authenticated GitHub CLI account. Credentials are read by the gateway process from `gh auth token --user ...` and never returned to workers, the browser, or logs. CLI credentials can be broader than the configured repository; this is development convenience, not a least-privilege production credential.
