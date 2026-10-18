@@ -1,6 +1,20 @@
 # Hosting handoff
 
-Status: deployment source prepared; GitHub App registration and Render deployment require signed-in browser sessions. No App ID or installation ID has been created or invented.
+Status: deployment source prepared; the user will create the Supabase project and deploy Render manually. GitHub App registration is still pending. No App ID or installation ID has been created or invented.
+
+## Manual deployment: user steps
+
+You can create Supabase and deploy Render yourself; no browser account sharing is required.
+
+1. Create a Supabase **Free** project, preferably in Singapore, and save its database password. Open **Connect**, choose the **session pooler**, and copy the PostgreSQL URI on **port 5432**. Replace the password placeholder with the URL-encoded database password and include `sslmode=require` (use `&` if the URI already has query parameters). The app uses this database connection, not a publishable/anon or service-role API key.
+2. In Render, choose **New → Blueprint**, connect GitHub, and select the private `Pgoutham47/agentshield` repository and `main` branch. Use its root `render.yaml`. If the repository is missing, grant Render's GitHub integration access to this deployment repository.
+3. Set the prompted `DATABASE_URL` directly in Render. Check that the service plan is **Free**, with no disk or additional database, then deploy. The Blueprint supplies build/start commands and creates four distinct role tokens automatically. Do not add GitHub App variables until the App and its PEM secret file are ready.
+4. Open the service's HTTPS URL. Use `AGENTSHIELD_OPERATOR_TOKEN` from Render's Environment settings to sign into the console. `/health` should return `status: ok` and `storage: postgresql`.
+5. Send the public Render URL back for verification. Do not send the database password, connection URI, role tokens, API keys, or PEM in chat. If deployment fails, share the error text with secrets removed.
+
+A new deployment starts with an empty history unless the offline import procedure is run first. Existing local SQLite history is preserved locally; creating the cloud project does not transfer it automatically. If retaining that history in the cloud is desired, arrange the import before creating new hosted tasks; the importer refuses a populated target.
+
+The next setup step is the GitHub App below. The App ID and installation ID can be shared as nonsecret identifiers. The private PEM belongs in Render's secret-file store. No paid AI key is needed for this pilot.
 
 ## GitHub App
 
