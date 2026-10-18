@@ -144,3 +144,5 @@ See [product positioning](docs/product-positioning.md) and [requirements status]
 ## User sign-in
 
 The hosted console now uses [Supabase Auth](docs/authentication.md) for verified GitHub login, encrypted server-side sessions, logout, and isolated personal demo workspaces. The configured owner retains the existing workspace and sandbox repository. Login never grants repository permissions to new users. The four SDK bearer identities remain supported independently.
+
+Signed-in users can now connect their own repositories from **Integrations**. See [repository connections](docs/repository-connections.md) for setup, authorization boundaries, and current scope.

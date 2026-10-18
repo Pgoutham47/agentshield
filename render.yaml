@@ -39,7 +39,14 @@ services:
         generateValue: true
       - key: AGENTSHIELD_REVIEWER_TOKEN
         generateValue: true
-      # App is installed only on the disposable sandbox. PEM stays in Render secret files.
+      # Owner sandbox integration. User-selected repositories use App user authorization.
+      # PEM and OAuth secret stay in Render.
+      - key: GITHUB_APP_CLIENT_ID
+        value: Iv23lirRXDuCYo785NT9
+      - key: GITHUB_APP_SLUG
+        value: agentshield-pgoutham47-pilot
+      - key: GITHUB_APP_CLIENT_SECRET
+        sync: false
       - key: AGENTSHIELD_GITHUB_REPOSITORY
         value: Pgoutham47/agentshield-github-sandbox
       - key: GITHUB_APP_ID

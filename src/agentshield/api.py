@@ -14,6 +14,7 @@ from pydantic import Field
 
 from .analyzer import Analyzer
 from .auth import AuthSettings, SupabaseAuth, install_auth
+from .connections import Connections, ConnectionSettings, install_connections
 from .demo import DEVELOPER, OPERATOR, REVIEWER, WORKER, run_demo
 from .engine import Engine, ShieldError
 from .github import GitHubAdapter, GitHubError, GitHubSettings
@@ -43,7 +44,14 @@ def local_tokens(directory):
 
 
 def create_app(
-    db_path=None, tokens=None, analyzer=None, github=None, auth_settings=None, auth_transport=None
+    db_path=None,
+    tokens=None,
+    analyzer=None,
+    github=None,
+    auth_settings=None,
+    auth_transport=None,
+    connection_settings=None,
+    connection_transport=None,
 ):
     data = Path(os.getenv("AGENTSHIELD_DATA_DIR", "data"))
     settings = GitHubSettings.from_env() if github is None else None
@@ -105,6 +113,15 @@ def create_app(
     auth = SupabaseAuth(auth_settings, engine.store, github, auth_transport) if auth_settings else None
     app.state.auth = auth
     install_auth(app, auth)
+    connection_settings = connection_settings or ConnectionSettings.from_env()
+    if connection_settings and not auth:
+        raise ValueError("GitHub repository connections require Supabase Auth")
+    connections = (
+        Connections(auth, connection_settings, connection_transport) if connection_settings else None
+    )
+    engine.connections = connections
+    app.state.connections = connections
+    install_connections(app, auth, connections)
 
     def identity(request: Request, authorization: str = Header(default="")):
         token = authorization.removeprefix("Bearer ") if authorization.startswith("Bearer ") else ""

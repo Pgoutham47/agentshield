@@ -2,6 +2,7 @@ const root = document.querySelector('#app');
 let token = sessionStorage.getItem('agentshield-token') || '';
 let auth = {enabled: false, user: null};
 let state = null, page = 'Overview', selectedTask = null;
+let githubUI = {installationPage: 1, installation: null, repositoryPage: 1, preview: null};
 const names = { allow: 'Allowed', deny: 'Denied', require_approval: 'Review required', pending: 'Pending', rejected: 'Rejected', approved: 'Approved', canceled: 'Canceled' };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const badge = (status, label) => `<span class="badge ${esc(status)}">${esc(label || names[status] || status)}</span>`;
@@ -14,8 +15,9 @@ async function api(path, options = {}) {
 }
 function login() {
   state = null; selectedTask = null; page = 'Overview';
+  githubUI = {installationPage: 1, installation: null, repositoryPage: 1, preview: null};
   if (auth.enabled) {
-    root.innerHTML = `<main class="login"><div class="brand"><span class="mark">✓</span>AgentShield</div><span class="eyebrow">YOUR CONTROL ROOM</span><h1>Give agents bounded access.</h1><p>Sign in to inspect task contracts, review exact actions, and follow every decision.</p><form id="github-login"><button class="primary" type="submit">Continue with GitHub →</button></form><p class="mt20">New accounts get a private demo workspace. Signing in does not grant access to your repositories.</p></main>`;
+    root.innerHTML = `<main class="login"><div class="brand"><span class="mark">✓</span>AgentShield</div><span class="eyebrow">YOUR CONTROL ROOM</span><h1>Give agents bounded access.</h1><p>Sign in to inspect task contracts, review exact actions, and follow every decision.</p><form id="github-login"><button class="primary" type="submit">Continue with GitHub →</button></form><p class="mt20">New accounts get a private workspace. Signing in does not grant access to your repositories.</p></main>`;
     document.querySelector('#github-login').addEventListener('submit', async event => {
       event.preventDefault();
       const button = event.currentTarget.querySelector('button'); button.disabled = true;
@@ -82,7 +84,7 @@ async function evidence() {
   const result = await api('/events?limit=1000');
   return header('An accountable trail.', 'Attempts, decisions, reviews, and outcomes. Payload content is excluded from the event stream.', '<button class="primary" data-export>↓ Export JSONL</button>') + `<section class="panel"><div class="panel-head"><h2>Audit events</h2>${badge('neutral',`${result.events.length} shown · first 1,000 limit`)}</div><div class="table-wrap"><table><thead><tr><th>Sequence</th><th>Event</th><th>Task</th><th>Time</th><th>Outcome / evidence</th></tr></thead><tbody>${result.events.slice().reverse().map(e => `<tr><td>${e.sequence}</td><td><code>${esc(e.event_type)}</code></td><td>${esc(short(e.task_id))}</td><td>${new Date(e.timestamp).toLocaleTimeString()}</td><td>${esc(e.metadata.disposition || e.metadata.state || e.metadata.status || short(e.hash))}</td></tr>`).join('')}</tbody></table></div></section><p class="small">Events are append-only through the application and hash chained. Signed external checkpoints and independently anchored tamper detection are future work.</p>`;
 }
-function integrations() {
+function legacyIntegrations() {
   const g = state.github_integration;
   return header('Connect a bounded repository.', 'Credentials stay on the gateway. Agents submit typed actions for a single authorized task.', g.configured ? '<button class="primary" data-verify-github>Verify connection</button>' : '') +
     `<section class="panel"><div class="panel-head"><h2>GitHub</h2>${badge(g.configured ? 'allow' : 'neutral',g.configured ? 'Configured' : 'Not configured')}</div><div class="panel-body"><dl class="contract">${[
@@ -90,12 +92,47 @@ function integrations() {
       ['Writes', g.writes_enabled ? 'Enabled · exact-action review required' : 'Disabled'], ['Adapter', g.adapter_version || 'Not configured'], ['Connection', g.connection === 'verified' ? 'Verified with GitHub' : 'Not checked this session']
     ].map(([k,v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl><p class="small mt20">Supported: read the named issue and files, create a task branch, commit reviewed changes, open a draft PR, and post a reviewed comment. Merges, releases, workflow changes, and force pushes are blocked.</p><p class="small">The demo lab uses the mock provider. Live runs appear in Runs after submission through the API or SDK. No sandbox or network isolation is connected.</p></div></section>`;
 }
+async function integrations() {
+  if (!auth.enabled) return legacyIntegrations();
+  const c = await api('/github/connections');
+  if (!c.enabled) return legacyIntegrations();
+  let chooser = '', problem = '';
+  if (c.authorized) {
+    try {
+      const list = await api(`/github/installations?page=${githubUI.installationPage}`);
+      chooser = `<section class="panel"><div class="panel-head"><div><h2>Choose a GitHub account</h2><p>Only installations that both you and AgentShield can access appear here.</p></div></div><div class="panel-body"><div class="actions">${list.installations.map(i => `<button data-installation="${i.id}" ${i.suspended ? 'disabled' : ''}>${esc(i.account)}${i.suspended ? ' · Suspended' : ''}</button>`).join('') || '<p>No installations found. Install the App on selected repositories, then refresh this list. Organization installations may need an owner’s approval.</p>'}</div><div class="actions mt20"><button data-install-page="${list.page-1}" ${list.page===1?'disabled':''}>Previous accounts</button><span>Page ${list.page}</span><button data-install-page="${list.page+1}" ${!list.has_more?'disabled':''}>Next accounts</button></div></div></section>`;
+      if (githubUI.installation) {
+        const r = await api(`/github/installations/${githubUI.installation}/repositories?page=${githubUI.repositoryPage}&installation_page=${githubUI.installationPage}`);
+        chooser += `<section class="panel"><div class="panel-head"><h2>Available repositories</h2></div><div class="panel-body">${r.repositories.map(repo => `<div class="scenario"><div><h3>${esc(repo.name)}</h3><p>${repo.private?'Private':'Public'}</p></div><button data-connect-repo="${repo.id}" ${c.repositories.some(x=>x.repository_id===repo.id)?'disabled':''}>${c.repositories.some(x=>x.repository_id===repo.id)?'Connected':'Connect repository'}</button></div>`).join('') || '<p>No repositories available. Check your App installation and organization approval.</p>'}<div class="actions mt20"><button data-repo-page="${r.page-1}" ${r.page===1?'disabled':''}>Previous repositories</button><span>Page ${r.page}</span><button data-repo-page="${r.page+1}" ${!r.has_more?'disabled':''}>Next repositories</button></div></div></section>`;
+      }
+    } catch (error) { problem = `<div class="notice">GitHub access could not be verified. Reauthorize, check the App installation, then refresh. ${esc(error.message)}</div>`; }
+  }
+  return header('Connect your repositories.', 'Choose the repositories this workspace can access. Your selections stay separate from other users.', '<button data-refresh-connections>Refresh access</button>') +
+    `<section class="panel"><div class="panel-head"><h2>GitHub App connection</h2>${badge(c.authorized?'allow':'neutral',c.authorized?'Authorized':'Not authorized')}</div><div class="panel-body"><p>1. Install the App and choose “Only select repositories” on GitHub.</p><p>2. Authorize using the same GitHub account you signed in with.</p><p>3. Select repositories below and preview an issue to verify access.</p><div class="actions mt20"><a href="${esc(c.install_url)}" rel="noopener noreferrer">Install or manage App ↗</a><button class="primary" data-authorize-github>${c.authorized?'Reauthorize GitHub':'Authorize GitHub'}</button>${c.authorized?'<button class="danger" data-disconnect-github>Disconnect GitHub from workspace</button>':''}</div><p class="small mt20">Every live write still requires exact-action review. Disconnecting removes workspace access; an in-flight request may finish. To remove the App’s GitHub permission too, <a href="${esc(c.revoke_url)}" target="_blank" rel="noopener noreferrer">revoke access on GitHub</a>.</p></div></section>` + problem +
+    `<section class="panel"><div class="panel-head"><h2>Connected repositories</h2>${badge('neutral',`${c.repositories.length} / 20`)}</div><div class="panel-body">${c.repositories.map(r=>`<article class="approval-card"><div class="run-top"><h3>${esc(r.name)}</h3><button class="danger" data-disconnect-repo="${esc(r.id)}">Disconnect repository</button></div><form data-preview-repo="${esc(r.id)}"><label class="field-label" for="issue-${esc(r.id)}">Issue number</label><input id="issue-${esc(r.id)}" type="number" min="1" step="1" value="1" required><button>Read issue</button></form></article>`).join('') || '<p>No repositories connected yet. Your demo scenarios remain available.</p>'}</div></section>` +
+    (githubUI.preview?`<section class="panel"><div class="panel-head"><h2>Issue preview · ${esc(githubUI.preview.repository)}</h2>${badge('allow','Read verified')}</div><div class="panel-body"><h3>${esc(githubUI.preview.issue.title)}</h3><pre>${esc(githubUI.preview.issue.body)}</pre></div></section>`:'') + chooser +
+    (state.github_integration.configured?`<details><summary>Existing owner sandbox integration</summary>${legacyIntegrations()}</details>`:'');
+}
+function bindConnections() {
+  const run = async (element, work) => { element.disabled = true; try { await work(); } catch (error) { toast(error.message); } finally { element.disabled = false; } };
+  document.querySelector('[data-authorize-github]')?.addEventListener('click', e=>run(e.currentTarget,async()=>{const r=await api('/github/connect',{method:'POST'});location.assign(r.url);}));
+  document.querySelector('[data-refresh-connections]')?.addEventListener('click', e=>run(e.currentTarget,async()=>{githubUI.preview=null;await render();}));
+  document.querySelector('[data-disconnect-github]')?.addEventListener('click', e=>run(e.currentTarget,async()=>{await api('/github/connections',{method:'DELETE'});githubUI={installationPage:1,installation:null,repositoryPage:1,preview:null};await refresh();toast('GitHub disconnected from this workspace.');}));
+  document.querySelectorAll('[data-installation]').forEach(b=>b.onclick=()=>run(b,async()=>{githubUI.installation=Number(b.dataset.installation);githubUI.repositoryPage=1;await render();}));
+  document.querySelectorAll('[data-install-page]').forEach(b=>b.onclick=()=>run(b,async()=>{githubUI.installationPage=Number(b.dataset.installPage);githubUI.installation=null;await render();}));
+  document.querySelectorAll('[data-repo-page]').forEach(b=>b.onclick=()=>run(b,async()=>{githubUI.repositoryPage=Number(b.dataset.repoPage);await render();}));
+  document.querySelectorAll('[data-connect-repo]').forEach(b=>b.onclick=()=>run(b,async()=>{await api('/github/repositories',{method:'POST',body:JSON.stringify({installation_id:githubUI.installation,repository_id:Number(b.dataset.connectRepo),installation_page:githubUI.installationPage,repository_page:githubUI.repositoryPage})});await refresh();toast('Repository connected to this workspace.');}));
+  document.querySelectorAll('[data-disconnect-repo]').forEach(b=>b.onclick=()=>run(b,async()=>{await api('/github/repositories/'+encodeURIComponent(b.dataset.disconnectRepo),{method:'DELETE'});githubUI.preview=null;await refresh();toast('Repository disconnected from this workspace.');}));
+  document.querySelectorAll('[data-preview-repo]').forEach(f=>f.onsubmit=e=>{e.preventDefault();run(f.querySelector('button'),async()=>{githubUI.preview=await api('/github/repositories/'+encodeURIComponent(f.dataset.previewRepo)+'/issues/'+Number(f.querySelector('input').value));await render();});});
+}
 async function render() {
   const content = await ({ Overview: overview, Runs: runs, Approvals: approvals, Policy: policies, Evaluation: evaluation, Evidence: evidence, Integrations: integrations }[page])();
-  root.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><span class="mark">✓</span>AgentShield</div><div class="workspace"><span class="avatar">a</span><div><b>${esc(auth.user?.workspace || "Acme workspace")}</b>${esc(auth.user?.email || "Local prototype")}</div></div><div class="eyebrow">CONTROL ROOM</div><nav class="nav" aria-label="Main navigation">${[['Overview','◫'],['Runs','⇄'],['Approvals','◇'],['Integrations','⊞'],['Policy','☷'],['Evaluation','▥'],['Evidence','≡']].map(([name,symbol]) => `<button data-go="${name}" class="${page === name ? 'active' : ''}" ${page === name ? 'aria-current="page"' : ''}><span class="symbol">${symbol}</span>${name}${name === 'Approvals' && pending().length ? `<span class="count">${pending().length}</span>` : ''}</button>`).join('')}</nav><div class="side-bottom"><span class="dot"></span><strong>Gateway connected</strong><br>${state.github_integration.configured ? 'GitHub + mock' : 'Mock provider'} · v0.1.0<br>Task-bound authorization</div></aside><div class="main"><header class="topbar"><div>Workspace <span aria-hidden="true"> / </span> <b>${esc(auth.user?.workspace || "acme")}</b></div><div class="topbar-right"><span class="tag">PROTOTYPE</span><button id="logout">Sign out</button></div></header><main class="content">${content}<footer class="footnote"><span>AgentShield · Authority follows the task.</span><span>Policy: coding-default-1 · ${esc(state.analysis.mode)} analysis</span></footer></main></div></div>`;
+  if (!state || (auth.enabled && !auth.user)) return;
+  root.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><span class="mark">✓</span>AgentShield</div><div class="workspace"><span class="avatar">a</span><div><b>${esc(auth.user?.workspace || "Acme workspace")}</b>${esc(auth.user?.email || "Local prototype")}</div></div><div class="eyebrow">CONTROL ROOM</div><nav class="nav" aria-label="Main navigation">${[['Overview','◫'],['Runs','⇄'],['Approvals','◇'],['Integrations','⊞'],['Policy','☷'],['Evaluation','▥'],['Evidence','≡']].map(([name,symbol]) => `<button data-go="${name}" class="${page === name ? 'active' : ''}" ${page === name ? 'aria-current="page"' : ''}><span class="symbol">${symbol}</span>${name}${name === 'Approvals' && pending().length ? `<span class="count">${pending().length}</span>` : ''}</button>`).join('')}</nav><div class="side-bottom"><span class="dot"></span><strong>Gateway connected</strong><br>${(state.github_integration.configured || state.connected_repository_count) ? 'GitHub + mock' : 'Mock provider'} · v0.1.0<br>Task-bound authorization</div></aside><div class="main"><header class="topbar"><div>Workspace <span aria-hidden="true"> / </span> <b>${esc(auth.user?.workspace || "acme")}</b></div><div class="topbar-right"><span class="tag">PROTOTYPE</span><button id="logout">Sign out</button></div></header><main class="content">${content}<footer class="footnote"><span>AgentShield · Authority follows the task.</span><span>Policy: coding-default-1 · ${esc(state.analysis.mode)} analysis</span></footer></main></div></div>`;
   bind();
 }
 function bind() {
+  bindConnections();
   document.querySelector('[data-verify-github]')?.addEventListener('click', async e => {
     e.target.disabled = true;
     try { state.github_integration = await api('/integrations/github?verify=true'); await render(); toast('Connected to the configured GitHub repository.'); }
@@ -135,7 +172,10 @@ async function start() {
     if (!response.ok) throw new Error('Sign-in service is temporarily unavailable. Reload to retry.');
     auth = await response.json();
     if (auth.enabled) { token = ''; sessionStorage.removeItem('agentshield-token'); }
+    const githubReturn = new URLSearchParams(location.search).get('github');
+    if (githubReturn) page = 'Integrations';
     if (auth.user || (!auth.enabled && token)) await refresh(); else login();
+    if (githubReturn) { history.replaceState(null, '', '/'); toast(githubReturn === 'failed' ? 'GitHub authorization failed. Use the same account as your AgentShield login and try again.' : githubReturn === 'installed' ? 'Installation updated. Authorize GitHub, then select your repositories.' : 'GitHub authorized. Choose repositories to connect.'); }
     if (new URLSearchParams(location.search).has('auth_error')) {
       history.replaceState(null, '', '/'); toast('Sign-in did not complete. Please try again.');
     }

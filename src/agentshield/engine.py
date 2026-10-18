@@ -19,8 +19,24 @@ class ShieldError(Exception):
 class Engine(LiveExecution):
     def __init__(self, path, analyzer=None, github=None):
         self.github = github
+        self.connections = None
         self.store = open_store(path)
         self.analyzer = analyzer or Analyzer()
+
+    def github_for(self, task, state=None):
+        if state and state.get("connection_id"):
+            if not self.connections:
+                raise GitHubError("GITHUB_CONNECTION_REMOVED")
+            return self.connections.adapter(task.tenant, task.resources[0], state)
+        if (
+            task.tenant == "acme"
+            and self.github
+            and task.resources == ["repo:" + self.github.settings.repository]
+        ):
+            return self.github
+        if self.connections and len(task.resources) == 1:
+            return self.connections.adapter(task.tenant, task.resources[0], state)
+        raise GitHubError("GITHUB_NOT_CONFIGURED")
 
     @staticmethod
     def _task(db, task_id, principal, act=False):
@@ -59,7 +75,7 @@ class Engine(LiveExecution):
         if task.provider == "mock" and (task.resources != ["repo:acme/web-ui"] or task.issue_ids != [412]):
             raise ShieldError("MOCK_RESOURCE_UNSUPPORTED", 400)
         if task.provider == "github":
-            if not self.github:
+            if not self.github and not self.connections:
                 raise ShieldError("GITHUB_NOT_CONFIGURED", 503)
             if "read_issue" not in task.operations:
                 raise ShieldError("GITHUB_TASK_REQUIRES_ISSUE_READ", 400)
@@ -74,9 +90,13 @@ class Engine(LiveExecution):
         if task.expires_at <= now() or task.expires_at > now() + timedelta(hours=1):
             raise ShieldError("INVALID_TASK_EXPIRY", 400)
         try:
-            repo_state = (
-                self.github.initialize(task) if task.provider == "github" else adapter.fresh_repo(issue)
-            )
+            if task.provider == "github":
+                github = self.github_for(task)
+                repo_state = github.initialize(task)
+                if getattr(github, "connection_id", None):
+                    repo_state["connection_id"] = github.connection_id
+            else:
+                repo_state = adapter.fresh_repo(issue)
         except GitHubError as error:
             raise ShieldError(error.code, 503) from None
         with self.store.transaction() as db:
@@ -580,16 +600,19 @@ class Engine(LiveExecution):
                 if any(t["contract"]["task_id"] == r["task_id"] for t in tasks)
             ]
         accessible_github = self.github and f"repo:{self.github.settings.repository}" in principal.resources
+        connected = self.connections.status(principal)["repositories"] if self.connections else []
+        has_github = bool(accessible_github or connected)
         return {
             "tasks": tasks,
             "approvals": approvals,
             "analysis": self.analyzer.versions,
             "github_integration": self.github.status() if accessible_github else {"configured": False},
+            "connected_repository_count": len(connected),
             "coverage": {
-                "github": "configured; mediated API only" if accessible_github else "mock only",
+                "github": "configured; mediated API only" if has_github else "mock only",
                 "sandbox": "not implemented",
                 "egress": "not implemented",
-                "credential_broker": "in-process; not isolated" if accessible_github else "not configured",
+                "credential_broker": "in-process; not isolated" if has_github else "not configured",
                 "live_ai_evaluated": False,
             },
         }

@@ -104,13 +104,18 @@ class PostgresStore(Store):
                 )
                 conn.execute("CREATE TABLE IF NOT EXISTS schema_versions(version INTEGER PRIMARY KEY)")
                 versions = [r[0] for r in conn.execute("SELECT version FROM schema_versions")]
-                if any(v not in {1, 2} for v in versions):
+                if any(v not in {1, 2, 3} for v in versions):
                     raise StorageError("DATABASE_SCHEMA_VERSION_UNSUPPORTED")
                 if 1 not in versions:
                     conn.execute((Path(__file__).parent / "migrations/001_postgres.sql").read_text())
                 if 2 not in versions:
                     conn.execute((Path(__file__).parent / "migrations/002_auth.sql").read_text())
+                if 3 not in versions:
+                    conn.execute((Path(__file__).parent / "migrations/003_connections.sql").read_text())
                 tables = [
+                    "github_accounts",
+                    "github_repositories",
+                    "github_flows",
                     "auth_sessions",
                     "schema_versions",
                     "tasks",

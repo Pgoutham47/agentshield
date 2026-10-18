@@ -27,9 +27,9 @@ A login uses PKCE, a random state, and a ten-minute encrypted HTTP-only flow coo
 
 Every authenticated request revalidates the identity with Supabase. Refresh rotation is serialized with session locks, with no database transaction held over provider I/O. Sessions expire after seven days; signing out deletes the local session immediately and attempts to revoke its Supabase refresh token. Supabase outages fail closed. Cookie-authenticated mutations require the configured Origin; bearer SDK requests remain independent.
 
-Only the immutable GitHub provider identity matching the server's owner setting receives the existing `acme` workspace and configured live sandbox resource. Editable user metadata, email, and GitHub username cannot grant ownership. Other users receive a workspace derived from their verified Supabase UUID with mock-only entitlements. Tasks, approvals, events, exports, and integration details are scoped to it. They may run synthetic demos but cannot use the owner's GitHub installation. Demo requesters/agents remain labelled fixture identities; actual human review records use the authenticated Supabase subject.
+Only the immutable GitHub provider identity matching the server's owner setting receives the existing `acme` workspace and configured live sandbox resource. Editable user metadata, email, and GitHub username cannot grant ownership. Other users receive a workspace derived from their verified Supabase UUID with demo entitlements; they can add their own repositories through [GitHub connections](repository-connections.md). Tasks, approvals, events, exports, and integration details are scoped to it. They may run synthetic demos but cannot use the owner's GitHub installation. Demo requesters/agents remain labelled fixture identities; actual human review records use the authenticated Supabase subject.
 
-This is personal demo enrollment, not team invitations, enterprise SSO, production RBAC, or self-service GitHub installation discovery. Do not widen owner entitlements to unrelated repositories. Never give SDK operator/reviewer tokens to ordinary users or agents.
+This is personal workspace enrollment; team invitations, enterprise SSO, and production RBAC remain future work. Do not widen owner entitlements to unrelated repositories. Never give SDK operator/reviewer tokens to ordinary users or agents.
 
 ## Verification
 

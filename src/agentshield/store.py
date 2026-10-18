@@ -22,6 +22,15 @@ class Store:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with self.transaction() as db:
             db.executescript("""
+            CREATE TABLE IF NOT EXISTS github_accounts (
+              tenant TEXT PRIMARY KEY, subject TEXT NOT NULL, github_id TEXT NOT NULL, tokens TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS github_repositories (
+              id TEXT PRIMARY KEY, tenant TEXT NOT NULL REFERENCES github_accounts(tenant) ON DELETE CASCADE,
+              installation_id INTEGER NOT NULL, repository_id INTEGER NOT NULL, name TEXT NOT NULL,
+              UNIQUE(tenant,repository_id), UNIQUE(tenant,name));
+            CREATE TABLE IF NOT EXISTS github_flows (
+              id TEXT PRIMARY KEY, session_id TEXT NOT NULL, subject TEXT NOT NULL, tenant TEXT NOT NULL,
+              github_id TEXT NOT NULL, verifier TEXT NOT NULL, consumed INTEGER NOT NULL DEFAULT 0, expires_at REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS auth_sessions (
               id TEXT PRIMARY KEY, user_id TEXT NOT NULL, tokens TEXT NOT NULL, expires_at REAL NOT NULL);
             CREATE INDEX IF NOT EXISTS auth_sessions_expiry ON auth_sessions(expires_at);
@@ -54,6 +63,8 @@ class Store:
             CREATE TRIGGER IF NOT EXISTS events_no_delete BEFORE DELETE ON events
               BEGIN SELECT RAISE(ABORT, 'append-only audit'); END;
             """)
+            if "consumed" not in {r[1] for r in db.execute("PRAGMA table_info(github_flows)")}:
+                db.execute("ALTER TABLE github_flows ADD COLUMN consumed INTEGER NOT NULL DEFAULT 0")
 
     @contextmanager
     def transaction(self):

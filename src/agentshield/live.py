@@ -19,7 +19,7 @@ class LiveExecution:
             repo = json.loads(
                 db.execute("SELECT state FROM repos WHERE task_id=?", (task.task_id,)).fetchone()[0]
             )
-            if task.provider != "github" or not self.github:
+            if task.provider != "github" or (not self.github and not self.connections):
                 raise ShieldError("GITHUB_TASK_REQUIRED", 400)
             try:
                 version = resource_version(repo, action)
@@ -38,8 +38,12 @@ class LiveExecution:
     def _execute_github(self, decision_id, action, principal):
         from .engine import ShieldError
 
-        if not self.github:
-            raise ShieldError("GITHUB_NOT_CONFIGURED", 503)
+        with self.store.transaction() as db:
+            _, initial_task = self._task(db, action.task_id, principal, act=True)
+            initial_repo = json.loads(
+                db.execute("SELECT state FROM repos WHERE task_id=?", (action.task_id,)).fetchone()[0]
+            )
+        github = self.github_for(initial_task, initial_repo)
         with self.store.transaction() as db:
             row, task = self._task(db, action.task_id, principal, act=True)
             table = "decisions"
@@ -108,13 +112,15 @@ class LiveExecution:
                 denial = policy.deterministic(current, action, row["status"])
                 if denial or decision.expires_at <= now():
                     raise ShieldError(denial or "AUTHORIZATION_EXPIRED", 403)
-                if not self.github.settings.enable_writes:
+                if repo.get("connection_id"):
+                    self.connections.check_connection(task.tenant, repo["connection_id"], db)
+                if not github.settings.enable_writes:
                     raise ShieldError("GITHUB_WRITES_DISABLED", 403)
 
         state, result, ids = "succeeded", None, []
         updated = repo
         try:
-            updated, result, ids, _ = self.github.execute(repo, action, guard)
+            updated, result, ids, _ = github.execute(repo, action, guard)
         except GitHubError as error:
             state = "outcome_unknown" if error.unknown else "failed"
             result = {"error": error.code, "retry_safe": False}
@@ -128,7 +134,7 @@ class LiveExecution:
             "result": result,
             "provider_request_id": ids[-1] if ids else None,
             "provider_request_ids": ids,
-            "adapter_version": self.github.version,
+            "adapter_version": github.version,
         }
         # If durable finalization fails, retain the consumed grant and repository lock for recovery.
         with self.store.transaction() as db:

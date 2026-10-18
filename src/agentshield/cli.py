@@ -52,7 +52,7 @@ def main():
             result = import_sqlite(args.sqlite, url, source_stopped=args.source_stopped)
         else:
             store = PostgresStore(url)
-            result = {"backend": store.backend, "schema_version": 2, "audit_valid": store.verify()}
+            result = {"backend": store.backend, "schema_version": 3, "audit_valid": store.verify()}
         print(json.dumps(result, indent=2))
     elif args.command == "github-check":
         from .github import GitHubAdapter, GitHubSettings

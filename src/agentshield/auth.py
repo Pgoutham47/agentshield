@@ -122,6 +122,11 @@ class SupabaseAuth:
         resources = ["repo:acme/web-ui"]
         if owner and self.github:
             resources.append("repo:" + self.github.settings.repository)
+        with self.store.transaction() as db:
+            resources.extend(
+                "repo:" + row[0]
+                for row in db.execute("SELECT name FROM github_repositories WHERE tenant=?", (tenant,))
+            )
         principal = Principal(
             tenant=tenant,
             subject="supabase:" + uid,
@@ -132,9 +137,10 @@ class SupabaseAuth:
         return principal, {
             "id": uid,
             "email": user.get("email", ""),
-            "workspace": "Owner workspace" if owner else "Personal demo workspace",
+            "workspace": "Owner workspace" if owner else "Personal workspace",
             "tenant": tenant,
             "owner": owner,
+            "github_id": ids[0],
         }
 
     def same_origin(self, request):
