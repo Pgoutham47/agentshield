@@ -11,7 +11,7 @@ from .models import canonical, digest, now, uid
 class Store:
     backend = "sqlite"
 
-    def execution_lock(self, decision_id):
+    def execution_lock(self, decision_id, wait=False):
         return nullcontext()
 
     def recoverable(self, db, decision_id):
@@ -22,6 +22,9 @@ class Store:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with self.transaction() as db:
             db.executescript("""
+            CREATE TABLE IF NOT EXISTS auth_sessions (
+              id TEXT PRIMARY KEY, user_id TEXT NOT NULL, tokens TEXT NOT NULL, expires_at REAL NOT NULL);
+            CREATE INDEX IF NOT EXISTS auth_sessions_expiry ON auth_sessions(expires_at);
             CREATE TABLE IF NOT EXISTS tasks (
               id TEXT PRIMARY KEY, tenant TEXT NOT NULL, idem TEXT NOT NULL,
               contract TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active',

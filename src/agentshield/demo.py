@@ -58,7 +58,15 @@ def task_contract():
     )
 
 
-def envelope(engine, task, operation, args, repo="repo:acme/web-ui", destination="github:acme/web-ui"):
+def envelope(
+    engine,
+    task,
+    operation,
+    args,
+    repo="repo:acme/web-ui",
+    destination="github:acme/web-ui",
+    principal=DEVELOPER,
+):
     resources = [repo]
     if "issue_number" in args:
         resources.append(f"issue:{args['issue_number']}")
@@ -69,27 +77,30 @@ def envelope(engine, task, operation, args, repo="repo:acme/web-ui", destination
         destination=destination,
         canonical_arguments=args,
         source_references=["issue:412#body"],
-        expected_resource_version=adapter.version(engine.repo(task.task_id, DEVELOPER)),
+        expected_resource_version=adapter.version(engine.repo(task.task_id, principal)),
     )
 
 
-async def run_demo(engine, scenario, reject=True, prompt=False):
+async def run_demo(engine, scenario, reject=True, prompt=False, tenant="acme"):
+    developer = DEVELOPER.model_copy(update={"tenant": tenant})
+    worker = WORKER.model_copy(update={"tenant": tenant})
+    reviewer = REVIEWER.model_copy(update={"tenant": tenant})
     draft = await engine.draft(
-        DraftRequest(request="Fix the display bug in issue 412", entitlements=DEVELOPER.resources), DEVELOPER
+        DraftRequest(request="Fix the display bug in issue 412", entitlements=developer.resources), developer
     )
     contract = Task.model_validate(draft["contract"])
     # Admit a gist proposal in this fixture so run B isolates the destination check.
     # The executor never implements gist publication, even with an in-scope destination.
     contract.operations.append("create_gist")
-    task = engine.create_task(contract, DEVELOPER, ISSUES[scenario])
+    task = engine.create_task(contract, developer, ISSUES[scenario])
     trace = []
 
     async def propose(op, args, **kwargs):
-        action = envelope(engine, task, op, args, **kwargs)
-        decision = await engine.decide(action, WORKER)
+        action = envelope(engine, task, op, args, principal=developer, **kwargs)
+        decision = await engine.decide(action, worker)
         item = {"operation": op, "decision": decision.model_dump(mode="json")}
         if decision.disposition == "allow":
-            item["execution"] = engine.execute(decision.decision_id, action, WORKER)
+            item["execution"] = engine.execute(decision.decision_id, action, worker)
         elif decision.disposition == "require_approval" and (reject or prompt):
             approve = False
             if prompt:
@@ -103,11 +114,11 @@ async def run_demo(engine, scenario, reject=True, prompt=False):
                     action_digest=decision.action_digest,
                     justification="Reviewed exact proposed action in local demonstration.",
                 ),
-                REVIEWER,
+                reviewer,
             )
             item["approval"] = resolution["status"]
             if approve:
-                item["execution"] = engine.execute(resolution["decision"]["decision_id"], action, WORKER)
+                item["execution"] = engine.execute(resolution["decision"]["decision_id"], action, worker)
         trace.append(item)
 
     await propose("read_issue", {"issue_number": 412})
@@ -138,7 +149,7 @@ async def run_demo(engine, scenario, reject=True, prompt=False):
             "draft": True,
         },
     )
-    repo = engine.repo(task.task_id, DEVELOPER)
+    repo = engine.repo(task.task_id, developer)
     return {
         "scenario": scenario,
         "task_id": task.task_id,

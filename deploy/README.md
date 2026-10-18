@@ -17,7 +17,7 @@ Status: deployed and verified on 18 October 2026. All resources created for this
 
 Use `AGENTSHIELD_OPERATOR_TOKEN` from [Render Environment](https://dashboard.render.com/web/srv-dba7aolg1s2s73b2ai00/env) to enter the console. The browser used for verification is already signed in. Reviewer, developer, and worker tokens are separate; never give an agent the operator or reviewer token.
 
-`DATABASE_URL` is stored in Render's secret environment. The App PEM is the secret file `github-app.pem`, read at `/etc/secrets/github-app.pem`. Neither belongs in Git or chat. Protected local copies of the PEM and gateway tokens are under the ignored `data/hosting/` directory for the operator's verification workflow. The database password was generated during project setup and is available inside Render's protected connection URI. Supabase API keys are not used.
+`DATABASE_URL` is stored in Render's secret environment. The App PEM is the secret file `github-app.pem`, read at `/etc/secrets/github-app.pem`. Neither belongs in Git or chat. Protected local copies of the PEM and gateway tokens are under the ignored `data/hosting/` directory for the operator's verification workflow. The database password was generated during project setup and is available inside Render's protected connection URI. Supabase API keys are not used for application database access. Optional user login uses the project publishable key only; see [Auth setup](../docs/authentication.md).
 
 The Supabase Data API was disabled at project creation. Application migrations enable RLS and revoke browser-role privileges on the private schema. Do not expose this schema through browser APIs.
 
@@ -58,3 +58,7 @@ Do not create duplicates of the running resources. If recovery requires a new pr
 In Render choose **New → Blueprint**, select the deployment repository and `main`, supply `DATABASE_URL`, and confirm Free with no disk or additional database. The current Blueprint includes App identifiers: add the matching PEM secret file before expecting startup to succeed, or prepare a bootstrap configuration without GitHub variables and with writes disabled. Render generates four role tokens. Restore/import the intended database before accepting new writes, following [the offline import procedure](../docs/deployment.md).
 
 References: [Render Free](https://render.com/docs/free), [Blueprint fields](https://render.com/docs/blueprint-spec), [Supabase connection modes](https://supabase.com/docs/guides/database/connecting-to-postgres).
+
+## User login preparation
+
+Supabase Auth support is implemented and tested. Activation requires the separate [AgentShield Sign In OAuth app](https://github.com/settings/applications/3943202) client secret, GitHub provider configuration in Supabase, and the four Auth environment values listed in [Auth setup](../docs/authentication.md). GitHub requested fresh account verification before it would generate the client secret. Do not enable the hosted login UI until the provider is configured and an end-to-end sign-in can be verified. The existing token console remains available meanwhile.

@@ -104,11 +104,14 @@ class PostgresStore(Store):
                 )
                 conn.execute("CREATE TABLE IF NOT EXISTS schema_versions(version INTEGER PRIMARY KEY)")
                 versions = [r[0] for r in conn.execute("SELECT version FROM schema_versions")]
-                if any(v != 1 for v in versions):
+                if any(v not in {1, 2} for v in versions):
                     raise StorageError("DATABASE_SCHEMA_VERSION_UNSUPPORTED")
                 if 1 not in versions:
                     conn.execute((Path(__file__).parent / "migrations/001_postgres.sql").read_text())
+                if 2 not in versions:
+                    conn.execute((Path(__file__).parent / "migrations/002_auth.sql").read_text())
                 tables = [
+                    "auth_sessions",
                     "schema_versions",
                     "tasks",
                     "decisions",
@@ -173,10 +176,13 @@ class PostgresStore(Store):
             raise StorageError("DATABASE_TRANSACTION_FAILED") from None
 
     @contextmanager
-    def execution_lock(self, decision_id):
+    def execution_lock(self, decision_id, wait=False):
         try:
             with self._connect() as conn:
-                if not conn.execute(
+                if wait:
+                    conn.execute("SET lock_timeout='15s'")
+                    conn.execute("SELECT pg_advisory_lock(%s)", (self._key("execute:" + decision_id),))
+                elif not conn.execute(
                     "SELECT pg_try_advisory_lock(%s)", (self._key("execute:" + decision_id),)
                 ).fetchone()[0]:
                     raise StorageError("EXECUTION_ALREADY_RUNNING")

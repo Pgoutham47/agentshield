@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import Field
 
 from .analyzer import Analyzer
+from .auth import AuthSettings, SupabaseAuth, install_auth
 from .demo import DEVELOPER, OPERATOR, REVIEWER, WORKER, run_demo
 from .engine import Engine, ShieldError
 from .github import GitHubAdapter, GitHubError, GitHubSettings
@@ -41,7 +42,9 @@ def local_tokens(directory):
     return json.loads(path.read_text())
 
 
-def create_app(db_path=None, tokens=None, analyzer=None, github=None):
+def create_app(
+    db_path=None, tokens=None, analyzer=None, github=None, auth_settings=None, auth_transport=None
+):
     data = Path(os.getenv("AGENTSHIELD_DATA_DIR", "data"))
     settings = GitHubSettings.from_env() if github is None else None
     github = github or (GitHubAdapter(settings) if settings else None)
@@ -98,11 +101,18 @@ def create_app(db_path=None, tokens=None, analyzer=None, github=None):
     )
     app.state.engine = engine
 
-    def identity(authorization: str = Header(default="")):
+    auth_settings = auth_settings or AuthSettings.from_env()
+    auth = SupabaseAuth(auth_settings, engine.store, github, auth_transport) if auth_settings else None
+    app.state.auth = auth
+    install_auth(app, auth)
+
+    def identity(request: Request, authorization: str = Header(default="")):
         token = authorization.removeprefix("Bearer ") if authorization.startswith("Bearer ") else ""
         for role, expected in tokens.items():
             if token and hmac.compare_digest(token, expected):
                 return identities[role]
+        if auth and not authorization:
+            return auth.authenticate(request)[0]
         raise ShieldError("AUTHENTICATION_REQUIRED", 401)
 
     def reviewer(principal=Depends(identity)):
@@ -132,7 +142,7 @@ def create_app(db_path=None, tokens=None, analyzer=None, github=None):
             response.headers["Strict-Transport-Security"] = "max-age=31536000"
         if request.url.path == "/" or request.url.path.startswith("/static"):
             response.headers["Content-Security-Policy"] = (
-                "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"
+                "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
             )
         return response
 
@@ -146,7 +156,7 @@ def create_app(db_path=None, tokens=None, analyzer=None, github=None):
 
     @app.get("/v1/integrations/github")
     def github_status(verify: bool = False, principal=Depends(reviewer)):
-        if not github:
+        if not github or f"repo:{github.settings.repository}" not in principal.resources:
             return {"configured": False, "connection": "not_configured"}
         return github.status(verify=verify)
 
@@ -233,7 +243,7 @@ def create_app(db_path=None, tokens=None, analyzer=None, github=None):
     async def demo(body: DemoRequest, principal=Depends(reviewer)):
         if principal.role != "admin":
             raise ShieldError("DEMO_OPERATOR_REQUIRED", 403)
-        return await run_demo(engine, body.scenario, reject=not body.leave_pending)
+        return await run_demo(engine, body.scenario, reject=not body.leave_pending, tenant=principal.tenant)
 
     @app.get("/v1/evaluation")
     def evaluation(principal=Depends(reviewer)):

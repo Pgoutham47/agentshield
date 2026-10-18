@@ -118,7 +118,7 @@ Both configurations have zero false denials and zero false holds in these 30 syn
 
 ## HTTP and SDK
 
-All `/v1` routes require `Authorization: Bearer <token>`. Local identities are configured server-side; tenant and role cannot be selected through request headers or arbitrary body fields.
+All `/v1` routes require a configured bearer token or a verified Supabase browser session. Local identities are configured server-side; tenant and role cannot be selected through request headers or arbitrary body fields.
 
 | Identity | Capabilities |
 | --- | --- |
@@ -135,8 +135,12 @@ The public models are in `src/agentshield/models.py`, and `AgentShieldClient` is
 
 [Deployment instructions](docs/deployment.md) and the [hosting handoff](deploy/README.md) include a **free Render + Supabase** configuration and prefilled private GitHub App registration. Hosted mode requires explicit role tokens and a TLS PostgreSQL connection. Render has no paid disk or database, and fixture analysis makes no paid model calls. Supabase uses its free IPv4-compatible session pooler on port 5432.
 
-The PostgreSQL migration, offline SQLite importer, and recovery are tested against real PostgreSQL. The [hosted pilot](https://agentshield-prototype.onrender.com) is live on Render Free with Supabase Free. The session pooler, hosted redeploy persistence, App authentication, and a reviewed sandbox draft PR have been verified. Free services can sleep or pause. Keep one instance and worker for this synthetic pilot; production availability and customer identity remain future work.
+The PostgreSQL migration, offline SQLite importer, and recovery are tested against real PostgreSQL. The [hosted pilot](https://agentshield-prototype.onrender.com) is live on Render Free with Supabase Free. The session pooler, hosted redeploy persistence, App authentication, and a reviewed sandbox draft PR have been verified. Free services can sleep or pause. Keep one instance and worker for this synthetic pilot; production availability and team enrollment remain future work.
 
 The initial live sandbox run used local CLI login; the hosted run used the installed GitHub App and produced [draft PR #3](https://github.com/Pgoutham47/agentshield-github-sandbox/pull/3). The console stays alongside the API on Render. No separate Vercel service is needed.
 
 See [product positioning](docs/product-positioning.md) and [requirements status](docs/requirements-status.md) for the first customer hypothesis, explicit scope, and remaining release gates.
+
+## User sign-in
+
+[Supabase Auth setup](docs/authentication.md) adds GitHub login, encrypted server-side sessions, logout, and isolated personal demo workspaces. The configured owner retains the existing workspace and sandbox repository. Login never grants repository permissions to new users. The four SDK bearer identities remain supported independently.

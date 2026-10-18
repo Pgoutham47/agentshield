@@ -1,5 +1,6 @@
 const root = document.querySelector('#app');
 let token = sessionStorage.getItem('agentshield-token') || '';
+let auth = {enabled: false, user: null};
 let state = null, page = 'Overview', selectedTask = null;
 const names = { allow: 'Allowed', deny: 'Denied', require_approval: 'Review required', pending: 'Pending', rejected: 'Rejected', approved: 'Approved', canceled: 'Canceled' };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -7,11 +8,25 @@ const badge = (status, label) => `<span class="badge ${esc(status)}">${esc(label
 const short = value => value.slice(0, 10);
 const toast = text => { const el = document.querySelector('#toast'); el.textContent = text; el.style.display = 'block'; setTimeout(() => el.style.display = 'none', 5500); };
 async function api(path, options = {}) {
-  const response = await fetch('/v1' + path, { ...options, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...options.headers }});
-  if (!response.ok) { const error = await response.json(); throw new Error(error.error || 'Request could not be completed. Check the API response.'); }
+  const response = await fetch('/v1' + path, { ...options, headers: { 'Content-Type': 'application/json', ...(auth.enabled ? {} : {'Authorization': `Bearer ${token}`}), ...options.headers }});
+  if (!response.ok) { if (response.status === 401) { state = null; auth.user = null; login(); } const error = await response.json(); throw new Error(error.error || 'Request could not be completed. Check the API response.'); }
   return response.headers.get('content-type')?.includes('application/json') ? response.json() : response.text();
 }
 function login() {
+  state = null; selectedTask = null; page = 'Overview';
+  if (auth.enabled) {
+    root.innerHTML = `<main class="login"><div class="brand"><span class="mark">✓</span>AgentShield</div><span class="eyebrow">YOUR CONTROL ROOM</span><h1>Give agents bounded access.</h1><p>Sign in to inspect task contracts, review exact actions, and follow every decision.</p><form id="github-login"><button class="primary" type="submit">Continue with GitHub →</button></form><p class="mt20">New accounts get a private demo workspace. Signing in does not grant access to your repositories.</p></main>`;
+    document.querySelector('#github-login').addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = event.currentTarget.querySelector('button'); button.disabled = true;
+      try {
+        const response = await fetch('/auth/login', {method: 'POST'});
+        if (!response.ok) throw new Error('Unable to start sign-in. Please try again.');
+        const result = await response.json(); location.assign(result.url);
+      } catch (error) { button.disabled = false; toast(error.message); }
+    });
+    return;
+  }
   root.innerHTML = `<main class="login"><div class="brand"><span class="mark">✓</span>AgentShield</div><span class="eyebrow">LOCAL CONTROL ROOM</span><h1>Give agents bounded access.</h1><p>Inspect task contracts, review exact actions, and follow every decision.</p><form id="login"><label class="field-label" for="token">Local operator or reviewer token</label><input id="token" type="password" required autocomplete="off" placeholder="Paste your local access token"><button class="primary">Open control room →</button></form><p class="mt20">For local setup, use the <code>operator</code> value in <code>data/local-tokens.json</code>. Tokens stay in this browser tab's session.</p></main>`;
   // No inline event handlers or executable user-provided markup.
   document.querySelector('#login').addEventListener('submit', async e => { e.preventDefault(); token = document.querySelector('#token').value.trim(); try { await refresh(); sessionStorage.setItem('agentshield-token', token); } catch (error) { toast(error.message); } });
@@ -35,7 +50,7 @@ function overview() {
   const actions = state.tasks.flatMap(t => t.actions), denied = actions.filter(a => a.decision.disposition === 'deny').length;
   const prs = state.tasks.reduce((n,t) => n + t.pull_requests, 0);
   return header('Useful work. Bounded authority.', 'See what agents attempted, what policy allowed, and what actually ran.', '<button data-export>↓ Export evidence</button><button class="primary" data-go="Runs">Explore runs →</button>') +
-    `<div class="notice"><span>◈</span><div><strong>Prototype environment.</strong> ${state.github_integration.configured ? 'Live GitHub is configured. Each run is labelled live or mock.' : 'GitHub is mocked.'} ${state.analysis.mode === 'fixture' ? 'Contextual signals are fixtures, not a live AI model.' : `Analyzer: ${esc(state.analysis.mode)}.`} All results below come from your local runs.</div></div><div class="metrics">${[
+    `<div class="notice"><span>◈</span><div><strong>Prototype environment.</strong> ${state.github_integration.configured ? 'Live GitHub is configured. Each run is labelled live or mock.' : 'GitHub is mocked.'} ${state.analysis.mode === 'fixture' ? 'Contextual signals are fixtures, not a live AI model.' : `Analyzer: ${esc(state.analysis.mode)}.`} All results below come from this workspace.</div></div><div class="metrics">${[
       ['Task runs',state.tasks.length,'Local workflow attempts',''],['Draft PRs created',prs,'Live and mock outcomes · see run labels','green'],['Actions denied',denied,`Of ${actions.length} proposed actions`,'red'],['Awaiting review',pending().length,'Exact actions, individually scoped','amber']
     ].map(([label,value,sub,color]) => `<div class="metric"><div class="label">${label}</div><div class="value ${color}">${value.toString().padStart(2,'0')}</div><div class="sub">${esc(sub)}</div></div>`).join('')}</div><div class="columns"><div>${scenarios()}<section class="panel"><div class="panel-head"><h2>Recent task runs</h2><button data-go="Runs">View all →</button></div>${taskRows()}</section></div><div>${coverage()}<section class="panel"><div class="panel-body"><div class="eyebrow">THE OPERATING PRINCIPLE</div><h2 class="my12">A permission is only as broad as the task.</h2><p class="small">Deterministic checks decide the boundary. Contextual signals can tighten it. The executor performs only the exact authorized action.</p></div></section></div></div>`;
 }
@@ -77,7 +92,7 @@ function integrations() {
 }
 async function render() {
   const content = await ({ Overview: overview, Runs: runs, Approvals: approvals, Policy: policies, Evaluation: evaluation, Evidence: evidence, Integrations: integrations }[page])();
-  root.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><span class="mark">✓</span>AgentShield</div><div class="workspace"><span class="avatar">a</span><div><b>Acme workspace</b>Local prototype</div></div><div class="eyebrow">CONTROL ROOM</div><nav class="nav" aria-label="Main navigation">${[['Overview','◫'],['Runs','⇄'],['Approvals','◇'],['Integrations','⊞'],['Policy','☷'],['Evaluation','▥'],['Evidence','≡']].map(([name,symbol]) => `<button data-go="${name}" class="${page === name ? 'active' : ''}" ${page === name ? 'aria-current="page"' : ''}><span class="symbol">${symbol}</span>${name}${name === 'Approvals' && pending().length ? `<span class="count">${pending().length}</span>` : ''}</button>`).join('')}</nav><div class="side-bottom"><span class="dot"></span><strong>Local gateway connected</strong><br>${state.github_integration.configured ? 'GitHub + mock' : 'Mock provider'} · v0.1.0<br>Task-bound authorization</div></aside><div class="main"><header class="topbar"><div>Workspace <span aria-hidden="true"> / </span> <b>acme</b></div><div class="topbar-right"><span class="tag">PROTOTYPE</span><button id="logout">Sign out</button></div></header><main class="content">${content}<footer class="footnote"><span>AgentShield · Authority follows the task.</span><span>Policy: coding-default-1 · ${esc(state.analysis.mode)} analysis</span></footer></main></div></div>`;
+  root.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><span class="mark">✓</span>AgentShield</div><div class="workspace"><span class="avatar">a</span><div><b>${esc(auth.user?.workspace || "Acme workspace")}</b>${esc(auth.user?.email || "Local prototype")}</div></div><div class="eyebrow">CONTROL ROOM</div><nav class="nav" aria-label="Main navigation">${[['Overview','◫'],['Runs','⇄'],['Approvals','◇'],['Integrations','⊞'],['Policy','☷'],['Evaluation','▥'],['Evidence','≡']].map(([name,symbol]) => `<button data-go="${name}" class="${page === name ? 'active' : ''}" ${page === name ? 'aria-current="page"' : ''}><span class="symbol">${symbol}</span>${name}${name === 'Approvals' && pending().length ? `<span class="count">${pending().length}</span>` : ''}</button>`).join('')}</nav><div class="side-bottom"><span class="dot"></span><strong>Gateway connected</strong><br>${state.github_integration.configured ? 'GitHub + mock' : 'Mock provider'} · v0.1.0<br>Task-bound authorization</div></aside><div class="main"><header class="topbar"><div>Workspace <span aria-hidden="true"> / </span> <b>${esc(auth.user?.workspace || "acme")}</b></div><div class="topbar-right"><span class="tag">PROTOTYPE</span><button id="logout">Sign out</button></div></header><main class="content">${content}<footer class="footnote"><span>AgentShield · Authority follows the task.</span><span>Policy: coding-default-1 · ${esc(state.analysis.mode)} analysis</span></footer></main></div></div>`;
   bind();
 }
 function bind() {
@@ -89,7 +104,15 @@ function bind() {
   document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { page = b.dataset.go; selectedTask = null; render().catch(e => toast(e.message)); });
   document.querySelectorAll('[data-task]').forEach(b => b.onclick = () => { selectedTask = b.dataset.task; page = 'Runs'; render().catch(e => toast(e.message)); });
   document.querySelector('#back')?.addEventListener('click', () => { selectedTask = null; render(); });
-  document.querySelector('#logout').onclick = () => { token = ''; sessionStorage.removeItem('agentshield-token'); login(); };
+  document.querySelector('#logout').onclick = async () => {
+    try {
+      if (auth.enabled) {
+        const response = await fetch('/auth/logout', {method: 'POST'});
+        if (!response.ok) throw new Error('Sign out failed. Please retry.');
+      }
+      token = ''; auth.user = null; sessionStorage.removeItem('agentshield-token'); login();
+    } catch (error) { toast(error.message); }
+  };
   document.querySelectorAll('[data-demo]').forEach(b => b.onclick = async () => {
     b.disabled = true; b.innerHTML = '<span class="spinner"></span> Running';
     try { const result = await api('/demo', {method:'POST',body:JSON.stringify({scenario:b.dataset.demo,leave_pending:b.dataset.demo === 'C'})}); await refresh(); toast(`Scenario ${result.scenario}: ${result.draft_prs} draft PR created. ${result.scenario === 'C' ? 'Review is waiting in Approvals.' : 'Trace available in Runs.'}`); }
@@ -105,4 +128,20 @@ function bind() {
   document.querySelectorAll('[data-cancel]').forEach(b => b.onclick = async () => { try { await api(`/tasks/${b.dataset.cancel}/cancel`,{method:'POST'}); await refresh(); toast('New actions for this task are blocked. Existing outcomes are retained.'); } catch(e) { toast(e.message); } });
   document.querySelectorAll('[data-export]').forEach(b => b.onclick = async () => { try { const text = await api('/events/export'); const url = URL.createObjectURL(new Blob([text],{type:'application/x-ndjson'})); const a = document.createElement('a'); a.href=url;a.download='agentshield-audit.jsonl';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000); } catch(e) { toast(e.message); } });
 }
-if (token) refresh().catch(e => { login(); toast(e.message); }); else login();
+async function start() {
+  root.innerHTML = '<main class="login"><h1>AgentShield</h1><p>Checking your session…</p></main>';
+  try {
+    const response = await fetch('/auth/me');
+    if (!response.ok) throw new Error('Sign-in service is temporarily unavailable. Reload to retry.');
+    auth = await response.json();
+    if (auth.enabled) { token = ''; sessionStorage.removeItem('agentshield-token'); }
+    if (auth.user || (!auth.enabled && token)) await refresh(); else login();
+    if (new URLSearchParams(location.search).has('auth_error')) {
+      history.replaceState(null, '', '/'); toast('Sign-in did not complete. Please try again.');
+    }
+  } catch (error) {
+    root.innerHTML = '<main class="login"><h1>Connection unavailable</h1><p>Reload this page to retry. Your workspace data is saved.</p></main>';
+    toast(error.message);
+  }
+}
+start();

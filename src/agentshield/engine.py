@@ -579,16 +579,17 @@ class Engine(LiveExecution):
                 )
                 if any(t["contract"]["task_id"] == r["task_id"] for t in tasks)
             ]
+        accessible_github = self.github and f"repo:{self.github.settings.repository}" in principal.resources
         return {
             "tasks": tasks,
             "approvals": approvals,
             "analysis": self.analyzer.versions,
-            "github_integration": self.github.status() if self.github else {"configured": False},
+            "github_integration": self.github.status() if accessible_github else {"configured": False},
             "coverage": {
-                "github": "configured; mediated API only" if self.github else "mock only",
+                "github": "configured; mediated API only" if accessible_github else "mock only",
                 "sandbox": "not implemented",
                 "egress": "not implemented",
-                "credential_broker": "in-process; not isolated" if self.github else "not configured",
+                "credential_broker": "in-process; not isolated" if accessible_github else "not configured",
                 "live_ai_evaluated": False,
             },
         }
