@@ -2,3 +2,6 @@
 
 .mt20{margin-top:20px}.my12{margin:12px 0}.small{font-size:12px}
 @media(max-width:760px){.shell{grid-template-columns:minmax(0,1fr)}.sidebar,.nav{min-width:0}.columns{grid-template-columns:minmax(0,1fr)}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.run-top{flex-wrap:wrap}.run-meta{flex-wrap:wrap;gap:8px}.panel-head{flex-wrap:wrap}}
+
+/* Repository enrollment uses flexible rows, including long private repository names. */
+.repository-choice{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:18px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}.repository-choice>div{min-width:0;flex:1 1 250px}.repository-choice h3{overflow-wrap:anywhere}.repository-choice button{flex:0 0 auto}.panel-body>.actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px}.panel-body>.actions>a{color:var(--green);font-weight:550}.workspace .avatar{flex-shrink:0}.workspace>div{min-width:0;overflow-wrap:anywhere}form[data-preview-repo]{display:grid;grid-template-columns:minmax(0,120px) max-content;gap:8px;align-items:center}form[data-preview-repo] label{grid-column:1/-1;margin-bottom:0}
