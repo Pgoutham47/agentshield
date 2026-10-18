@@ -28,7 +28,15 @@ services:
         generateValue: true
       - key: AGENTSHIELD_REVIEWER_TOKEN
         generateValue: true
-      # Connect the GitHub App later in Environment settings. Never add CLI credentials.
+      # App is installed only on the disposable sandbox. PEM stays in Render secret files.
+      - key: AGENTSHIELD_GITHUB_REPOSITORY
+        value: Pgoutham47/agentshield-github-sandbox
+      - key: GITHUB_APP_ID
+        value: "5366143"
+      - key: GITHUB_INSTALLATION_ID
+        value: "172622857"
+      - key: GITHUB_PRIVATE_KEY_PATH
+        value: /etc/secrets/github-app.pem
       - key: GITHUB_AUTH_MODE
         value: app
       - key: GITHUB_ENABLE_WRITES
