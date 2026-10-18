@@ -8,30 +8,39 @@ Status: deployment source prepared; GitHub App registration and Render deploymen
 
 Create it under **Pgoutham47**, then install it on **only `agentshield-github-sandbox`**. Do not install this agent executor on its own deployment repository. Generate a private key and keep it outside Git, under a protected local folder or the hosting secret-file store. Record the App ID and installation ID; these identifiers are not credentials.
 
-## Render
+## Supabase Free
 
-The deployment source is the private `Pgoutham47/agentshield` repository. Render's own GitHub connection needs read access to this source repository. This is separate from the AgentShield GitHub App, which operates only on the dummy sandbox.
+Sign in to Supabase, select an organization on the **Free** plan, and create a free project in Singapore if a free project slot is available. Do not purchase compute, IPv4, backups, or plan upgrades. Keep the generated database password in a password manager/server secret store.
 
-Create a Blueprint using the repository's `render.yaml`. It selects Singapore, one 512 MB instance, one 1 GB persistent disk, and four generated role tokens. Current base cost is about **$7.25/month**, plus any applicable workspace fees, usage, and tax. Review the displayed charge before creating paid resources. No paid resources have been created by this task.
+From the project's Connect dialog, select the **session pooler (5432)** and copy its PostgreSQL URI into Render's `DATABASE_URL` secret. URL-encode reserved password characters and include `?sslmode=require`. Transaction pooling (6543) is incompatible with the execution locks. Use the database connection URI, not the Supabase API URL or anonymous key.
 
-Supply the prompted variables:
+The app creates a private `agentshield` schema with RLS and no browser-role grants. Keep it out of exposed API schemas. See [database design and offline import](../docs/deployment.md) to preserve the existing local history before the first hosted run.
+
+## Render Free
+
+The private deployment source is `Pgoutham47/agentshield`. Render's GitHub connection needs access to this repository; it is separate from the executor App installed on the sandbox.
+
+Create a Blueprint from `render.yaml`. Confirm **Free**, one Singapore instance, **no disk**, and no paid database/service/add-on. Supply `DATABASE_URL` securely. Four role tokens are generated. The initial service starts without GitHub App credentials, with fixture analysis and writes disabled. There are no paid model calls. Do not proceed if the dashboard requires a paid resource.
+
+To connect the GitHub App after registration, add these environment settings:
 
 - `AGENTSHIELD_GITHUB_REPOSITORY=Pgoutham47/agentshield-github-sandbox`
-- `GITHUB_APP_ID`: the registered App's ID
-- `GITHUB_INSTALLATION_ID`: the selected-repository installation's ID
+- `GITHUB_APP_ID`: registered App ID
+- `GITHUB_INSTALLATION_ID`: selected-repository installation ID
+- `GITHUB_PRIVATE_KEY_PATH=/etc/secrets/github-app.pem`
 
-Add a Render secret file named **`github-app.pem`**, containing the generated PEM. The service reads `/etc/secrets/github-app.pem`; neither the key nor local role tokens belong in this repository. A missing key intentionally prevents startup. If Blueprint creation does not expose secret-file configuration, add it in the new service's Environment settings before retrying its initial deploy.
+Add the PEM as a Render secret file named `github-app.pem`. Keep `GITHUB_AUTH_MODE=app` and `GITHUB_ENABLE_WRITES=false` until the reviewer/operator's `GET /v1/integrations/github?verify=true` succeeds and the selected repository is correct. Do not put the private key or role tokens in Git or chat. A configured App with a missing key intentionally prevents startup.
 
-The Blueprint initially sets `GITHUB_ENABLE_WRITES=false`. Keep it disabled until `GET /v1/integrations/github?verify=true` succeeds using the reviewer/operator token and the selected repository is correct. On Render, use `uv run --no-dev agentshield github-check` for the equivalent read-only check. Enable reviewed writes by changing `GITHUB_ENABLE_WRITES` to `"true"` in the Blueprint and deploying that reviewed configuration change; an ad hoc Dashboard override can be reset by a later Blueprint sync.
+Enable sandbox writes only after verification by changing the Blueprint's `GITHUB_ENABLE_WRITES` to `"true"` and deploying that reviewed configuration change. A Dashboard override may be reset by Blueprint sync. Exact-action review remains mandatory for each write.
 
 ## Verify after deployment
 
-1. Confirm `/health` and the console load over HTTPS. API calls without a bearer token must return 401.
-2. Sign in with the generated operator token from Render settings. Verify the GitHub App connection and confirm that writes are disabled.
-3. Run one mock scenario, record its task ID, restart the service, and confirm its task/audit history survives. Do not upload the local SQLite database.
-4. After intentionally enabling sandbox writes, run the reviewed six-operation workflow against the disposable repository using gateway credentials. Check the draft PR, rejected exposure, and audit outcomes. Never give the agent the App PEM.
-5. Keep one process and one instance. Supabase and multi-instance recovery are not implemented. Unknown remote outcomes require investigation; there is no automatic reconciliation.
+1. Confirm HTTPS console and `/health`, including `storage: postgresql`. API calls without a bearer token must return 401.
+2. Sign in with Render's generated operator token. Run a mock scenario, record its task ID, restart/redeploy, and verify task/audit history survives.
+3. Verify GitHub App read access with writes disabled. After enabling reviewed sandbox writes, exercise the six-operation flow and inspect the resulting draft PR and audit.
+4. Confirm the account billing pages still show free resources. Free Render sleeps after inactivity; Supabase may pause an inactive free project. Do not create keep-alive traffic or silently upgrade to bypass limits.
+5. Keep one instance/worker. Unknown remote outcomes require investigation, not automatic retry.
 
-The hosted pilot uses fixed local-style identities and synthetic workloads. SSO, customer enrollment, isolated runners, and controlled egress remain separate implementation work.
+Current status: PostgreSQL migration and local real-database tests completed; cloud resources and App registration are awaiting account sign-ins. No cloud deployment or Supabase pooler verification is claimed.
 
-References: [GitHub App URL parameters](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-using-url-parameters), [Render Blueprint fields](https://render.com/docs/blueprint-spec), [Render pricing](https://render.com/pricing).
+References: [GitHub App URL parameters](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-using-url-parameters), [Render Blueprint fields](https://render.com/docs/blueprint-spec), [Render Free](https://render.com/docs/free), [Supabase Free](https://supabase.com/pricing).

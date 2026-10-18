@@ -1,5 +1,7 @@
+import asyncio
 import hmac
 import json
+import logging
 import os
 import secrets
 from contextlib import asynccontextmanager
@@ -16,6 +18,7 @@ from .engine import Engine, ShieldError
 from .github import GitHubAdapter, GitHubError, GitHubSettings
 from .hosting import hosted, hosted_tokens
 from .models import Action, DraftRequest, ExecutionRequest, Resolution, Strict, Task
+from .postgres import StorageError
 
 STATIC = Path(__file__).parent / "static"
 
@@ -42,12 +45,13 @@ def create_app(db_path=None, tokens=None, analyzer=None, github=None):
     data = Path(os.getenv("AGENTSHIELD_DATA_DIR", "data"))
     settings = GitHubSettings.from_env() if github is None else None
     github = github or (GitHubAdapter(settings) if settings else None)
-    required_tokens = hosted_tokens(data, github)
+    database_url = os.getenv("DATABASE_URL")
+    required_tokens = hosted_tokens(data, github, database_url)
     if required_tokens:
         data.mkdir(mode=0o700, parents=True, exist_ok=True)
         data.chmod(0o700)
     engine = Engine(
-        db_path or data / "console.sqlite",
+        db_path or database_url or data / "console.sqlite",
         analyzer or Analyzer(os.getenv("AGENTSHIELD_ANALYZER", "fixture")),
         github=github,
     )
@@ -66,7 +70,25 @@ def create_app(db_path=None, tokens=None, analyzer=None, github=None):
     @asynccontextmanager
     async def lifespan(app):
         engine.recover()
-        yield
+
+        async def recovery_loop():
+            while True:
+                await asyncio.sleep(30)
+                try:
+                    await asyncio.to_thread(engine.recover)
+                except StorageError:
+                    logging.getLogger(__name__).warning("Database recovery check unavailable")
+
+        monitor = asyncio.create_task(recovery_loop()) if engine.store.backend == "postgresql" else None
+        try:
+            yield
+        finally:
+            if monitor:
+                monitor.cancel()
+                try:
+                    await monitor
+                except asyncio.CancelledError:
+                    pass
 
     app = FastAPI(
         title="AgentShield",
@@ -114,6 +136,10 @@ def create_app(db_path=None, tokens=None, analyzer=None, github=None):
             )
         return response
 
+    @app.exception_handler(StorageError)
+    async def storage_error_handler(request, error):
+        return JSONResponse(status_code=503, content={"error": str(error)})
+
     @app.exception_handler(GitHubError)
     async def github_error_handler(request, error):
         return JSONResponse(status_code=503, content={"error": error.code})
@@ -130,7 +156,10 @@ def create_app(db_path=None, tokens=None, analyzer=None, github=None):
 
     @app.get("/health")
     def health():
+        with engine.store.transaction() as db:
+            db.execute("SELECT 1")
         return {
+            "storage": engine.store.backend,
             "status": "ok",
             "provider": "mock-github-1",
             "github_configured": github is not None,

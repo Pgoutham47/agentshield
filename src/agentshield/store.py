@@ -2,13 +2,21 @@
 
 import json
 import sqlite3
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 from .models import canonical, digest, now, uid
 
 
 class Store:
+    backend = "sqlite"
+
+    def execution_lock(self, decision_id):
+        return nullcontext()
+
+    def recoverable(self, db, decision_id):
+        return True
+
     def __init__(self, path):
         self.path = str(path)
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -75,7 +83,7 @@ class Store:
             "previous_hash": json.loads(last["event"])["hash"] if last else "genesis",
         }
         event["hash"] = digest(event)
-        db.execute("INSERT INTO events(event) VALUES (?)", (canonical(event),))
+        db.execute("INSERT INTO events(seq,event) VALUES (?,?)", (event["sequence"], canonical(event)))
 
     def events(self, tenant, after=0, limit=1000):
         with self.transaction() as db:
@@ -109,3 +117,11 @@ class Store:
                     return False
                 previous = stored_hash
         return True
+
+
+def open_store(location):
+    if str(location).startswith(("postgres://", "postgresql://")):
+        from .postgres import PostgresStore
+
+        return PostgresStore(location)
+    return Store(location)

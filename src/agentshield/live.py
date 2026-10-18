@@ -85,7 +85,7 @@ class LiveExecution:
                 "UPDATE tasks SET active=active+1,bytes=bytes+? WHERE id=?", (MAX_WIRE_BYTES, task.task_id)
             )
             db.execute(
-                "INSERT INTO executions VALUES(?,?,?,?,NULL)",
+                "INSERT INTO executions(id,decision_id,task_id,state,result) VALUES(?,?,?,?,NULL)",
                 (execution_id, decision_id, task.task_id, "executing"),
             )
             db.execute("INSERT INTO github_inflight VALUES(?,?)", (repo["repository"].lower(), execution_id))

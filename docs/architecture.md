@@ -4,7 +4,7 @@ Status: prototype implemented; production boundaries not yet implemented.
 
 ## ADR 001: A small transactional core before distributed services
 
-Use Python 3.12, FastAPI, Pydantic 2, SQLite WAL, HTTPX, uv, and pytest. Serve the small console as same-origin HTML/CSS/ES modules. There is no frontend build toolchain and no external asset dependency.
+Use Python 3.12, FastAPI, Pydantic 2, SQLite WAL locally or PostgreSQL for hosting, HTTPX, uv, and pytest. Serve the small console as same-origin HTML/CSS/ES modules. There is no frontend build toolchain and no external asset dependency.
 
 The prototype brief explicitly permits a single Python process. The PRD's Go/Python/TypeScript, Cedar, EKS, S3, SQS, and PostgreSQL design is a production direction, not a prerequisite for testing the authorization invariant. The first deliverable benefits more from precise semantics, persistent state, and adversarial tests than from service count. This does not claim Python is faster or more secure than Go.
 
@@ -20,11 +20,11 @@ The brief's example includes `issue:412` as a selector even though the resources
 
 ## ADR 003: Persistence before approval UX
 
-SQLite is the source of truth. `BEGIN IMMEDIATE` serializes reservations across connections. Task calls and proposed bytes are reserved once when a decision is created; denial and duplicate retries do not add reservations. Reserved call/byte charges are conservative and are not refunded after expiry or rejection. Execution concurrency is reserved at execution and released when the outcome is recorded. Response bytes are checked before committing mock effects.
+The configured database is the source of truth. In local SQLite mode, `BEGIN IMMEDIATE` serializes reservations across connections. Task calls and proposed bytes are reserved once when a decision is created; denial and duplicate retries do not add reservations. Reserved call/byte charges are conservative and are not refunded after expiry or rejection. Execution concurrency is reserved at execution and released when the outcome is recorded. Response bytes are checked before committing mock effects.
 
 Analysis happens outside the database transaction. The gateway rechecks identity, task state, policy, idempotency, and budgets after analysis. No transaction is held across a network await.
 
-An execution uses two durable transactions: consume the grant and record execution intent, then check current state and atomically apply the mock effect with the outcome. A crash in between leaves a consumed grant and a recoverable unknown outcome. On exclusive startup, interrupted executions become `outcome_unknown`; no blind retry occurs. Real-provider atomicity is not implemented by these mock transactions.
+An execution uses two durable transactions: consume the grant and record execution intent, then check current state and atomically apply the mock effect with the outcome. A crash in between leaves a consumed grant and a recoverable unknown outcome. On exclusive SQLite startup, interrupted executions become `outcome_unknown`; no blind retry occurs. Real-provider atomicity is not implemented by these mock transactions.
 
 Approval adds a new allow grant referencing an immutable original decision. Rejection never grants authority. The original held decision stays non-executable. A different envelope, expiry, resource version, requester, tenant, policy restriction, or consumed grant prevents execution.
 
@@ -36,11 +36,11 @@ Audit events are appended in the same database transaction as state changes. A s
 
 The default analyzer is labelled `fixture-signals-v1`. It is a test double with obvious seeded indicators. AI-off runs make the baseline exposure visible. Live mode uses an explicitly configured model, no tools, a fixed system message, JSON data, a three-second total deadline, and strict output validation. Known secret indicators are redacted; the prototype does not claim complete redaction, private inference, or Bedrock residency.
 
-## ADR 005: Render now, Supabase for the pilot
+## ADR 005: Free Render with Supabase persistence
 
-The user's available providers are Vercel, Render, and Supabase. Prepare a single Render service with persistent storage for the prototype. Keep the browser console on the same origin. Before multiple instances or real customer state, implement PostgreSQL transactions and migrations on Supabase, move identities to authenticated memberships, and test cancellation/replay across instances.
+Use one Render Free service for the same-origin API and console, with a Supabase Free PostgreSQL database. There is no persistent disk or paid model provider. SQLite remains a local default and is prohibited on Render. The free session pooler on port 5432 supplies IPv4 connectivity and supports session ownership; transaction pooling is refused. Free services can sleep/pause, so this pilot does not promise always-on availability.
 
-A Vercel frontend becomes useful when the console needs its own release lifecycle. The present SQLite service must not be deployed onto ephemeral serverless storage. The Supabase service credential belongs only on the backend; it must never be placed in an agent or browser bundle.
+The server database credential stays only in the backend environment. A private schema, enabled RLS, and revoked browser-role privileges keep this state out of Supabase's browser APIs. Fixed prototype identities remain; authenticated organization memberships are a separate release gate.
 
 ## Production trust boundary still required
 
@@ -48,4 +48,10 @@ The workload can currently call arbitrary network or shell tools outside this pr
 
 ## ADR 006: Real GitHub with mandatory write review
 
-The live adapter uses a server-configured repository, immutable task snapshots, typed REST operations, operation-scoped installation tokens, and no generic URL dispatch. Explicit CLI authentication is supported for a disposable local sandbox only. Every live mutation requires exact-action review regardless of analyzer results. The live executor reserves response bytes and a repository lock before I/O, consumes grants durably, and retains the lock for unknown outcomes. No SQLite transaction spans network calls. See [integration semantics and race limits](github-integration.md).
+The live adapter uses a server-configured repository, immutable task snapshots, typed REST operations, operation-scoped installation tokens, and no generic URL dispatch. Explicit CLI authentication is supported for a disposable local sandbox only. Every live mutation requires exact-action review regardless of analyzer results. The live executor reserves response bytes and a repository lock before I/O, consumes grants durably, and retains the lock for unknown outcomes. No database transaction spans network calls. See [integration semantics and race limits](github-integration.md).
+
+## ADR 007: PostgreSQL transactions and execution ownership
+
+Versioned SQL migrations preserve existing state semantics. A schema-scoped advisory transaction lock serializes short state mutations and audit sequencing; network requests run outside transactions. Dedicated session locks protect executions across provider calls. Recovery attempts the corresponding transaction lock and skips work with a live owner. Lost sessions fail closed, while abandoned durable intents become unknown without replay. A periodic sweep handles disconnected owners after startup. Repository reservations remain for unknown GitHub results.
+
+The SQLite importer requires an offline source and empty target, validates the entire audit chain, and imports all tables in one transaction. It retains consumed grants and pending reviews. Cross-process crash, concurrency, import, and restart tests run against real PostgreSQL. This conservative locking model favors correctness over throughput; managed Supabase pooler behavior and hosted restarts still need live verification.

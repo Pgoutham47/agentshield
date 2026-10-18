@@ -10,13 +10,17 @@ def hosted():
     return os.getenv("RENDER") == "true" or os.getenv("AGENTSHIELD_ENV") == "hosted"
 
 
-def hosted_tokens(data, github):
+def hosted_tokens(data, github, database_url=None):
     if not hosted():
         return None
     if not data.is_absolute():
         raise ValueError("Hosted AGENTSHIELD_DATA_DIR must be absolute")
-    if os.getenv("RENDER") == "true" and not data.resolve().is_relative_to(Path("/var/data")):
-        raise ValueError("Render state must be on the persistent /var/data disk")
+    if os.getenv("RENDER") == "true" and not database_url:
+        raise ValueError("Render requires a persistent PostgreSQL DATABASE_URL; local files are ephemeral")
+    if database_url:
+        from .postgres import validate_url
+
+        validate_url(database_url, require_tls=True)
     tokens = {role: os.getenv(f"AGENTSHIELD_{role.upper()}_TOKEN", "") for role in ROLES}
     if any(len(token) < 32 or len(token.encode("utf-8")) != len(token) for token in tokens.values()):
         raise ValueError("Hosted role tokens must each contain at least 32 ASCII characters")

@@ -25,7 +25,7 @@ uv run agentshield serve
 
 Configuration is read at startup. `.env.example` is reference material; export variables explicitly. Without `GITHUB_ENABLE_WRITES=true`, the adapter refuses writes even with an approved grant. The Integrations screen verifies read access without making a write. Each live run shows its repository, issue, execution outcomes, and draft PR link.
 
-To repeat the synthetic demonstration, review `github_demo.py` first. It deliberately creates a new branch, commit, PR, and verification comment on every invocation. Only run it on the disposable repository. Run it while no other execution is active; do not run a second server with startup recovery against the same database.
+To repeat the synthetic demonstration, review `github_demo.py` first. It deliberately creates a new branch, commit, PR, and verification comment on every invocation. Only run it on the disposable repository. Run it while no other execution is active; do not run a second SQLite server with startup recovery against the same database. PostgreSQL uses session locks to skip active executions.
 
 ```sh
 uv run agentshield github-demo --issue 1 --approve-sandbox-writes
@@ -58,7 +58,7 @@ uv run agentshield serve
 
 Keep the PEM in the host's secret-file facility with restrictive file permissions. Do not paste the private key into chat or store it in source control. Share only the App ID, installation ID, selected repository, and the server-side secret-file path when configuring the next environment. Enable writes after verifying read access and reviewing the pilot scope.
 
-The broker signs a short-lived App JWT and requests an installation token for exactly the configured repository. It narrows token permissions for each operation and checks the returned repository identity. Tokens are not cached in SQLite. This follows GitHub's [installation-token API](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app). API requests pin version `2026-03-10`, use the fixed `api.github.com` origin, do not follow redirects or inherit proxy environment settings, and have bounded bodies and timeouts.
+The broker signs a short-lived App JWT and requests an installation token for exactly the configured repository. It narrows token permissions for each operation and checks the returned repository identity. Tokens are not cached in the database. This follows GitHub's [installation-token API](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app). API requests pin version `2026-03-10`, use the fixed `api.github.com` origin, do not follow redirects or inherit proxy environment settings, and have bounded bodies and timeouts.
 
 ## API and SDK flow
 
@@ -72,7 +72,7 @@ Local identities are still prototype identities in a fixed tenant, extended only
 
 ## Execution guarantees and limits
 
-- The database records execution intent and consumes the grant before network I/O. A repository-wide lock serializes mediated operations, across tasks in this single store. Network calls occur outside SQLite transactions. Cancellation, expiry, and policy are rechecked immediately before each mutation.
+- The database records execution intent and consumes the grant before network I/O. A repository-wide lock serializes mediated operations, across tasks in this single store. Network calls occur outside database transactions. Cancellation, expiry, and policy are rechecked immediately before each mutation.
 - Reads use immutable Git objects. Symlinks and submodules are refused. Commits preserve the existing base tree and file mode, and reject truncated tree inspection, directory replacement, workflow-file changes, secret-path writes, and overlapping file paths. This is not a complete content/secret scanner.
 - Branch creation starts at the task's pinned base commit. Pushes require the branch created by that task and the expected remote head. Updates set `force: false`. Draft PRs require the task's commit and an unchanged base branch.
 - GitHub's [reference update API](https://docs.github.com/en/rest/git/refs#update-a-reference) does not expose an expected-old-SHA compare-and-swap. Head rechecks and non-force updates reduce races; they do not make separate REST calls atomic. External branch deletion/recreation, a last-moment cancellation, and PR head changes retain provider race windows. No cross-system transaction is claimed.

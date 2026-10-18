@@ -94,10 +94,10 @@ class FakeBroker:
 
 
 @pytest.fixture
-def live(tmp_path):
+def live(database_location):
     fake = FakeGitHub()
     adapter = GitHubAdapter(GitHubSettings(REPO, enable_writes=True), httpx.MockTransport(fake), FakeBroker())
-    engine = Engine(tmp_path / "live.sqlite", Analyzer("off"), github=adapter)
+    engine = Engine(database_location, Analyzer("off"), github=adapter)
     task = engine.create_task(
         Task(
             provider="github",

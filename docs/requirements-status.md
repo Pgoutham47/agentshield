@@ -7,11 +7,11 @@ The prototype brief governs this iteration. The PRD remains the production refer
 | Brief runs A/B/C; PRD T01/T12/T13 | CLI and console demos; acceptance tests | Mock demos plus a verified live GitHub sandbox; proposals and contextual signals are still scripted/fixtures |
 | AI03 contract drafting | Template draft offline; configured model selects bounded resources live; confirmation endpoint | No live model run, richer least-privilege argument drafting not implemented |
 | FR02/FR04 contract/scope | Identity-bound task, resource, issue, operation, destination, expiry tests | Production identity service and provider entitlements |
-| FR11 / T07 budgets | Concurrent call tests, byte reservation and response cap, concurrency limit | Multi-instance PostgreSQL and spend limits |
+| FR11 / T07 budgets | SQLite/PostgreSQL concurrent call tests, byte reservation and response cap, concurrency limit | Hosted capacity/availability and spend limits |
 | FR13/FR14 / T04/T05 approvals | Immutable original decisions, linked allow grants, digest/version/replay tests | Delegated organization RBAC and production approvals UX |
-| FR15 persistent pending state | Restart approval test | HA and restore semantics |
+| FR15 persistent pending state | SQLite/PostgreSQL restart and offline import tests | HA and restore semantics |
 | FR17 cancellation | Existing grants rechecked before execution; cancel tests | Provider revocation and running sandbox containment |
-| FR18 / T10 outcome accuracy | Unknown outcome on timeout; startup recovery test | Provider reconciliation |
+| FR18 / T10 outcome accuracy | Unknown outcome on timeout; PostgreSQL cross-process ownership and crash recovery tests | Provider reconciliation |
 | AI06 / T06 evaluator failure | Strict output, no tools, fixed instructions, timeout and malformed-output tests | Independent evaluator adversarial benchmark |
 | T08 benign security terms | Synthetic legitimate proposal corpus includes security terminology | Representative real workload validation |
 | T09 tenant checks | API identity mapping and tenant-scoped engine tests | Real multi-tenant enrollment, SSO, membership lifecycle |
@@ -25,11 +25,11 @@ The prototype brief governs this iteration. The PRD remains the production refer
 ## Known prototype constraints
 
 - One fixed tenant, fixture repository, and optional server-configured live repository through the HTTP identities. Engine tenant checks exist; general tenant provisioning does not.
-- One process, one SQLite owner. Startup recovery must not run beside an active worker.
+- One hosted instance/worker for this pilot. Local SQLite startup requires exclusive ownership; PostgreSQL recovery skips active session owners.
 - Call/byte reservations are conservative and do not refund rejected or expired decisions.
 - Repository-wide versions invalidate approvals after unrelated mock mutations.
 - Pending approvals are checked for expiry when resolved; there is no background expiry scheduler.
-- Review payloads and mock contents are stored locally without encryption or retention. Synthetic data only.
+- Review payloads and mock contents persist in the configured database without application-level encryption or retention. Synthetic data only.
 - Fixture data and detector indicators are intentionally coupled. No general model-quality conclusion follows from fixture evaluation.
 - The limited secret detector is not gitleaks and cannot detect all encoded secrets or private data.
 - Approval checks and execution work through the backend API. The console's scenario C deliberately continues safe work, so its pending approval will normally be stale for approval and still rejectable.

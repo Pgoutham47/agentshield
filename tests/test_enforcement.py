@@ -10,6 +10,7 @@ from agentshield.analyzer import Analyzer
 from agentshield.demo import DEVELOPER, OPERATOR, REVIEWER, WORKER, envelope, run_demo, task_contract
 from agentshield.engine import Engine, ShieldError
 from agentshield.models import Resolution, canonical, now
+from agentshield.postgres import StorageError
 
 
 def run(value):
@@ -17,8 +18,8 @@ def run(value):
 
 
 @pytest.fixture
-def env(tmp_path):
-    engine = Engine(tmp_path / "test.sqlite")
+def env(database_location):
+    engine = Engine(database_location)
     task = engine.create_task(task_contract(), DEVELOPER)
     return engine, task
 
@@ -229,7 +230,7 @@ def test_concurrent_execution_consumes_once(env):
     def attempt(_):
         try:
             return env[0].execute(grant, action, WORKER)["state"]
-        except ShieldError as e:
+        except (ShieldError, StorageError) as e:
             return e.code
 
     with ThreadPoolExecutor(max_workers=8) as pool:
@@ -249,7 +250,7 @@ def test_concurrent_approval_consumes_once(env):
                 Resolution(approve=True, action_digest=d.action_digest, justification="Concurrent review"),
                 REVIEWER,
             )["status"]
-        except ShieldError as e:
+        except (ShieldError, StorageError) as e:
             return e.code
 
     with ThreadPoolExecutor(max_workers=6) as pool:
@@ -257,8 +258,8 @@ def test_concurrent_approval_consumes_once(env):
     assert results.count("approved") == 1
 
 
-def test_atomic_call_budget(tmp_path):
-    engine = Engine(tmp_path / "budget.sqlite")
+def test_atomic_call_budget(database_location):
+    engine = Engine(database_location)
     task = task_contract()
     task.budget.max_calls = 2
     engine.create_task(task, DEVELOPER)
@@ -382,7 +383,7 @@ def test_audit_redaction_and_append_only(env, tmp_path):
     env[0].store.export("acme", target)
     assert "ledger-db" not in target.read_text()
     assert env[0].store.verify()
-    with pytest.raises(Exception, match="append-only"):
+    with pytest.raises(Exception, match="append-only|DATABASE_TRANSACTION_FAILED"):
         with env[0].store.transaction() as db:
             db.execute("DELETE FROM events")
     assert all("hash" in json.loads(line) for line in target.read_text().splitlines())

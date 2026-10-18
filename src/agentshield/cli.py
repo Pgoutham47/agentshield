@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import os
 from pathlib import Path
 
 from .analyzer import Analyzer
@@ -27,12 +28,32 @@ def main():
     live.add_argument("--output", default="output/github-verification.json")
     live.add_argument("--approve-sandbox-writes", action="store_true")
     commands.add_parser("github-check", help="Verify the configured repository with read-only GitHub calls")
+    commands.add_parser("db-check", help="Verify PostgreSQL schema and audit without printing credentials")
+    migration = commands.add_parser(
+        "db-import", help="Import an offline SQLite snapshot into empty PostgreSQL"
+    )
+    migration.add_argument("--sqlite", required=True)
+    migration.add_argument("--source-stopped", action="store_true")
     commands.add_parser("serve")
     args = parser.parse_args()
     if args.command == "serve":
         import uvicorn
 
         uvicorn.run("agentshield.api:app", host="127.0.0.1", port=8000)
+    elif args.command in {"db-check", "db-import"}:
+        from .postgres import PostgresStore
+
+        url = os.getenv("DATABASE_URL")
+        if not url:
+            parser.error("Set DATABASE_URL securely in the server environment")
+        if args.command == "db-import":
+            from .migrate import import_sqlite
+
+            result = import_sqlite(args.sqlite, url, source_stopped=args.source_stopped)
+        else:
+            store = PostgresStore(url)
+            result = {"backend": store.backend, "schema_version": 1, "audit_valid": store.verify()}
+        print(json.dumps(result, indent=2))
     elif args.command == "github-check":
         from .github import GitHubAdapter, GitHubSettings
 

@@ -49,12 +49,12 @@ The workload is scripted. These runs demonstrate what the gateway does when an a
 - Typed FastAPI HTTP API, strict argument schemas, bounded request and inspection sizes.
 - Task contracts intersected with authenticated identity entitlements; repository and named-issue checks.
 - Ordered deterministic policy functions; contextual signals can only tighten the outcome.
-- Persistent SQLite transactions for contracts, budgets, decisions, approvals, nonces, executions, and mock state.
+- SQLite for local development and PostgreSQL/Supabase support with versioned migrations for contracts, budgets, decisions, approvals, nonces, executions, and mock state.
 - One-use execution authorization bound to the complete canonical envelope, identity, expiry, and expected resource version.
 - Atomic call and byte reservation; response-byte checks before committing mock effects; concurrent execution limits.
 - Role-separated local bearer identities, cancellation, idempotency conflict checks, tenant checks, and independent approval.
 - Strict-schema contextual analysis, an AI-off baseline, fixture signals, and a configurable Anthropic Messages client with a three-second deadline.
-- Durable execution intent, explicit `outcome_unknown`, and startup recovery without replay.
+- Durable execution intent, explicit `outcome_unknown`, and crash recovery without replay (PostgreSQL session ownership prevents recovering active work).
 - Append-only audit outbox with a hash chain and exportable JSONL. Payload text and model rationales are excluded from audit events.
 - Real GitHub adapter with pinned file reads, task branches, non-force commits, draft PRs, reviewed comments, server-side App token brokerage, and an explicit CLI development mode. Every live write requires review.
 - Async Python SDK with no automatic write retries.
@@ -133,8 +133,10 @@ The public models are in `src/agentshield/models.py`, and `AgentShieldClient` is
 
 ## Deployment and next steps
 
-[Deployment instructions](docs/deployment.md) and the [hosting handoff](deploy/README.md) include a prepared Render Blueprint and prefilled private GitHub App registration. Hosted mode requires explicit role tokens and App authentication. Nothing has been deployed. Run **one process and one instance** with this SQLite implementation: startup recovery assumes exclusive ownership. Horizontal scaling and production recovery require a PostgreSQL state implementation.
+[Deployment instructions](docs/deployment.md) and the [hosting handoff](deploy/README.md) include a **free Render + Supabase** configuration and prefilled private GitHub App registration. Hosted mode requires explicit role tokens and a TLS PostgreSQL connection. Render has no paid disk or database, and fixture analysis makes no paid model calls. Supabase uses its free IPv4-compatible session pooler on port 5432.
 
-The proposed next stage is a Render API with Supabase PostgreSQL, a deployed scoped GitHub App installation, and a controlled runner. App authentication is implemented and transport-tested; the live sandbox run used the existing local CLI login. Vercel can host a future separate frontend. The current small console is served alongside the API to keep authentication and local setup simple.
+The PostgreSQL migration, offline SQLite importer, and recovery are tested against real PostgreSQL. Cloud account access is still needed: no hosted deployment or Supabase pooler verification has been completed. Free services can sleep or pause. Keep one instance and worker for this synthetic pilot; production availability and customer identity remain future work.
+
+App authentication is implemented and transport-tested; the live sandbox run used the existing local CLI login. The console stays alongside the API on Render. No separate Vercel service is needed.
 
 See [product positioning](docs/product-positioning.md) and [requirements status](docs/requirements-status.md) for the first customer hypothesis, explicit scope, and remaining release gates.

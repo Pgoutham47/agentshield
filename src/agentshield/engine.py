@@ -7,7 +7,7 @@ from .analyzer import Analyzer
 from .github import GitHubError, resource_version
 from .live import LiveExecution
 from .models import OPERATIONS, POLICY, WRITES, Decision, Signals, Task, canonical, digest, now, uid
-from .store import Store
+from .store import open_store
 
 
 class ShieldError(Exception):
@@ -19,7 +19,7 @@ class ShieldError(Exception):
 class Engine(LiveExecution):
     def __init__(self, path, analyzer=None, github=None):
         self.github = github
-        self.store = Store(path)
+        self.store = open_store(path)
         self.analyzer = analyzer or Analyzer()
 
     @staticmethod
@@ -230,7 +230,7 @@ class Engine(LiveExecution):
                 disposition
             ]
             db.execute(
-                "INSERT INTO decisions VALUES(?,?,?,?,?,?,?)",
+                "INSERT INTO decisions(id,task_id,action_id,idem,action,response,state) VALUES(?,?,?,?,?,?,?)",
                 (
                     result.decision_id,
                     task.task_id,
@@ -269,7 +269,7 @@ class Engine(LiveExecution):
             )
             if result.approval_id:
                 db.execute(
-                    "INSERT INTO approvals VALUES(?,?,?,?,NULL)",
+                    "INSERT INTO approvals(id,decision_id,task_id,status,resolution) VALUES(?,?,?,?,NULL)",
                     (result.approval_id, result.decision_id, task.task_id, "pending"),
                 )
                 self.store.event(
@@ -354,6 +354,10 @@ class Engine(LiveExecution):
             return response
 
     def execute(self, decision_id, action, principal):
+        with self.store.execution_lock(decision_id):
+            return self._execute(decision_id, action, principal)
+
+    def _execute(self, decision_id, action, principal):
         with self.store.transaction() as db:
             _, bound_task = self._task(db, action.task_id, principal, act=True)
         if bound_task.provider == "github":
@@ -392,7 +396,7 @@ class Engine(LiveExecution):
             db.execute(f"UPDATE {table} SET state='consumed' WHERE id=?", (decision_id,))
             db.execute("UPDATE tasks SET active=active+1 WHERE id=?", (task.task_id,))
             db.execute(
-                "INSERT INTO executions VALUES(?,?,?,?,NULL)",
+                "INSERT INTO executions(id,decision_id,task_id,state,result) VALUES(?,?,?,?,NULL)",
                 (execution_id, decision_id, task.task_id, "executing"),
             )
             self.store.event(
@@ -485,13 +489,18 @@ class Engine(LiveExecution):
             )
 
     def recover(self):
-        """Call only during exclusive process startup, never while another executor is live."""
+        """Recover abandoned intent; SQLite requires exclusive startup, PostgreSQL checks session owners."""
         with self.store.transaction() as db:
             for row in db.execute(
                 "SELECT e.*,t.tenant FROM executions e JOIN tasks t ON t.id=e.task_id WHERE e.state='executing'"
             ).fetchall():
+                if not self.store.recoverable(db, row["decision_id"]):
+                    continue
                 db.execute("UPDATE executions SET state='outcome_unknown' WHERE id=?", (row["id"],))
-                db.execute("UPDATE tasks SET active=MAX(0,active-1) WHERE id=?", (row["task_id"],))
+                db.execute(
+                    "UPDATE tasks SET active=CASE WHEN active>0 THEN active-1 ELSE 0 END WHERE id=?",
+                    (row["task_id"],),
+                )
                 self.store.event(
                     db,
                     row["tenant"],

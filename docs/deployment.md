@@ -1,6 +1,6 @@
 # Deployment
 
-## Local prototype (verified)
+## Local prototype
 
 ```sh
 make setup
@@ -9,33 +9,43 @@ make eval
 make dev
 ```
 
-Use http://127.0.0.1:8000 and the operator token in `data/local-tokens.json`. The default bind address is loopback. Synthetic state persists across restarts. No external accounts are required.
+Open http://127.0.0.1:8000 using the operator token in `data/local-tokens.json`. Without `DATABASE_URL`, local development uses SQLite. Hosted Render deliberately requires PostgreSQL and explicit role tokens; it cannot silently fall back to ephemeral SQLite or local credentials.
 
-## Render pilot (prepared; account setup pending)
+## Free Render + Supabase pilot
 
-Use the [deployment handoff](../deploy/README.md) for the prefilled GitHub App registration, selected-repository installation, exact Render variables, PEM secret-file setup, current estimated cost, and post-deploy verification. The private deployment source is `Pgoutham47/agentshield`; the executor App must be installed only on `Pgoutham47/agentshield-github-sandbox`.
+The [hosting handoff](../deploy/README.md) describes account setup and deployment. `render.yaml` selects **Render Free**, one instance, one worker, no disk, and fixture analysis with no paid model calls. Durable state lives in a **Supabase Free** PostgreSQL project. No paid services or add-ons are authorized.
 
-`render.yaml` selects Singapore, a 512 MB service, a 1 GB persistent disk, and four generated tokens. The service starts with GitHub writes disabled. In hosted mode the application rejects missing/duplicate/short role tokens, local CLI GitHub authentication, missing App key files, and state paths outside Render's persistent `/var/data` disk. It never creates fallback local login tokens in hosted mode. Builds and automatic deploys use the checked-in source and passing CI.
+The PostgreSQL implementation has real database tests for reservations, replay prevention, pending approvals, audit integrity, restart persistence, separate-process execution ownership, and crash recovery. Hosted Render, Supabase's managed pooler, and installed GitHub App authentication still require live verification after account access. Local PostgreSQL tests are not evidence of a completed cloud deployment.
 
-Run exactly one instance and one Uvicorn worker. Startup recovery assumes exclusive ownership of the database. The pilot remains synthetic-workload only: real customer authentication, broker isolation, and production tenancy are unfinished. No paid Render service has been created or verified yet.
+Use the Supabase **session pooler on port 5432** with `sslmode=require` (or certificate verification). This provides IPv4 connectivity without purchasing the IPv4 add-on. Do not use the transaction pooler on port 6543: execution ownership requires session advisory locks. Store the database URI in Render's secret environment as `DATABASE_URL`; encode reserved password characters. Never put it in frontend code, source control, chat, or agent credentials.
 
-## Supabase PostgreSQL (next implementation)
+Startup applies versioned SQL migrations to the private `agentshield` schema. `AGENTSHIELD_DB_SCHEMA` can select another private schema. Tables have RLS enabled and no anonymous/authenticated browser policies; schema/table/sequence/function privileges are revoked from PUBLIC and Supabase's browser roles. The backend database owner can access the schema. Do not add it to Supabase's exposed API schemas. The Supabase anonymous API key is not a database credential and is not used here.
 
-The current store uses SQLite SQL and JSON functions. Setting `DATABASE_URL` alone will not enable Supabase; no such unsupported switch is provided.
+The store serializes short state transactions with an advisory transaction lock. Each execution also holds a dedicated session lock across provider calls; no database transaction spans network I/O. Startup and periodic recovery skip live execution owners, then mark abandoned intent `outcome_unknown` without replay. A lost execution session fails closed. Unknown GitHub outcomes retain their repository reservation for investigation. This conservative pilot design is not a throughput or high-availability claim.
 
-Before a shared pilot:
+Render Free sleeps after inactivity and uses ephemeral files. Supabase Free has database/project limits and can pause inactive projects. This is a demo/pilot deployment, not an always-on production service. If a quota prevents creation, stop; do not upgrade automatically. See [Render Free limits](https://render.com/docs/free), [Supabase pricing](https://supabase.com/pricing), and [connection modes](https://supabase.com/docs/guides/database/connecting-to-postgres).
 
-- Introduce PostgreSQL migrations and transactions for tasks, reservations, approvals, grants, executions, and the event outbox.
-- Replace the single-process startup sweep with worker ownership and leases; preserve nonce consumption and outcome-unknown recovery.
-- Re-run concurrency tests across separate processes/instances, including cancellation/approval races and interrupted execution recovery.
-- Add authenticated tenant memberships, per-resource authority, and database-level isolation checks.
-- Select a supported database connection mode for the Render service and configure TLS using [Supabase's connection guidance](https://supabase.com/docs/guides/database/connecting-to-postgres).
-- Keep backend database credentials out of browser code and workload agent environments.
+## Import existing SQLite history
 
-## Vercel frontend (optional later)
+The offline importer preserves contracts, decisions, pending approvals, consumed grants, executions, repository reservations, mock contents, and the complete audit chain. It requires an empty destination schema and rejects an invalid audit chain or still-executing source records. All data copying commits atomically; the source is opened read-only.
 
-A separate console could be hosted on Vercel after introducing a frontend build and an authenticated API session design. The current console is intentionally same-origin, with bearer tokens and no permissive CORS. Do not move it to another origin and enable wildcard CORS as a shortcut. Keep the stateful gateway on a suitable backend host.
+1. Stop every process using the source SQLite database. Recover interrupted executions with the old engine first if necessary, then stop it again.
+2. Make a SQLite backup and retain it for rollback. Do not migrate a database being changed by another process.
+3. Set the destination `DATABASE_URL` securely in the process environment. Run:
 
-## Live evaluator configuration
+```sh
+uv run agentshield db-import --sqlite data/console.sqlite --source-stopped
+uv run agentshield db-check
+```
 
-Configure `ANTHROPIC_API_KEY`, an enabled `ANTHROPIC_MODEL`, and `AGENTSHIELD_ANALYZER=anthropic` only after agreeing on data handling. Live calls use the direct Anthropic endpoint; in-region Bedrock and private inference remain unimplemented. Timeouts are three seconds and cause writes to be held. The prototype never silently swaps from unavailable live analysis to fixture signals.
+4. Start only the PostgreSQL-backed service. Check existing tasks, pending approvals, and exported audit before enabling writes. The flag confirms an operator precondition; it does not stop source processes for you.
+
+Do not resume the old SQLite writer after accepting new PostgreSQL writes: the histories would diverge. Re-running the importer against a populated target is rejected. This is not a bidirectional synchronization tool.
+
+## Validation and remaining scope
+
+CI runs the suite against SQLite and a real PostgreSQL 17 service. For a dedicated local test database, export `AGENTSHIELD_TEST_DATABASE_URL` and run `uv run pytest -q`; tests create and drop isolated schemas. Without it, PostgreSQL-specific cases are skipped. Never point tests at customer data.
+
+Run one hosted instance and worker for this pilot. Fixed prototype identities, synthetic workloads, and mandatory GitHub write reviews remain. SSO, customer enrollment, isolated runners, controlled egress, provider reconciliation, retention, and production capacity work are still outstanding.
+
+A separate Vercel frontend is unnecessary for this pilot: Render serves the console and API on the same origin. Keep fixture analysis enabled to avoid paid inference. Optional live model code exists but is not part of this free deployment.
