@@ -12,6 +12,17 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      # User login uses Supabase Free. Keep the stable session secret in Render only.
+      - key: SUPABASE_URL
+        value: https://oanpbakftuafjikwkzzp.supabase.co
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: APP_BASE_URL
+        value: https://agentshield-prototype.onrender.com
+      - key: APP_SESSION_SECRET
+        sync: false
+      - key: AGENTSHIELD_OWNER_GITHUB_ID
+        value: "140201744"
       - key: AGENTSHIELD_ENV
         value: hosted
       - key: PYTHON_VERSION
