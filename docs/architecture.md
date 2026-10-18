@@ -1,0 +1,51 @@
+# Architecture decisions
+
+Status: prototype implemented; production boundaries not yet implemented.
+
+## ADR 001: A small transactional core before distributed services
+
+Use Python 3.12, FastAPI, Pydantic 2, SQLite WAL, HTTPX, uv, and pytest. Serve the small console as same-origin HTML/CSS/ES modules. There is no frontend build toolchain and no external asset dependency.
+
+The prototype brief explicitly permits a single Python process. The PRD's Go/Python/TypeScript, Cedar, EKS, S3, SQS, and PostgreSQL design is a production direction, not a prerequisite for testing the authorization invariant. The first deliverable benefits more from precise semantics, persistent state, and adversarial tests than from service count. This does not claim Python is faster or more secure than Go.
+
+The console is a deliberate addition to the brief's CLI scope. It gives a reviewer access to the exact payload, reasons, expiry, and approval binding while retaining the CLI as the reproducible acceptance path.
+
+## ADR 002: Explicit policy functions for the prototype
+
+`policy.deterministic` implements identity-adjacent task validity, prohibitions, resource/issue scope, operations, destinations, canonical argument validation, and a limited secret-pattern check. `Engine.decide` performs transactional budget reservation, sensitive-file review, and optional contextual tightening. `Engine.execute` checks mutable restrictions again.
+
+Cedar was not integrated or benchmarked; there is no pretend Cedar adapter. Before a policy-editing pilot, port these fixtures into Cedar contract tests and evaluate whether the engine can express the model without custom authorization prose. This is a deliberate D03 deviation, not a claim of a failed installation.
+
+The brief's example includes `issue:412` as a selector even though the resources list contains only a repository. The implementation resolves that ambiguity with an explicit `issue_ids` contract field. A selector must match both the task and the actual arguments. It does not implicitly authorize every issue in a repository.
+
+## ADR 003: Persistence before approval UX
+
+SQLite is the source of truth. `BEGIN IMMEDIATE` serializes reservations across connections. Task calls and proposed bytes are reserved once when a decision is created; denial and duplicate retries do not add reservations. Reserved call/byte charges are conservative and are not refunded after expiry or rejection. Execution concurrency is reserved at execution and released when the outcome is recorded. Response bytes are checked before committing mock effects.
+
+Analysis happens outside the database transaction. The gateway rechecks identity, task state, policy, idempotency, and budgets after analysis. No transaction is held across a network await.
+
+An execution uses two durable transactions: consume the grant and record execution intent, then check current state and atomically apply the mock effect with the outcome. A crash in between leaves a consumed grant and a recoverable unknown outcome. On exclusive startup, interrupted executions become `outcome_unknown`; no blind retry occurs. Real-provider atomicity is not implemented by these mock transactions.
+
+Approval adds a new allow grant referencing an immutable original decision. Rejection never grants authority. The original held decision stays non-executable. A different envelope, expiry, resource version, requester, tenant, policy restriction, or consumed grant prevents execution.
+
+The mock deliberately uses a repository-wide version. This causes conservative stale approvals after unrelated writes. The live connector uses issue hashes and commit SHAs; provider race windows are documented in the GitHub integration guide.
+
+## ADR 004: Honest evidence and model boundaries
+
+Audit events are appended in the same database transaction as state changes. A separate filesystem append would create a dual-write failure window, so JSONL is exported from a transactional outbox. Every event is sequenced and hash chained. Decision events include policy and detector versions. The database prevents update/delete through application SQL, but no signed external checkpoint exists.
+
+The default analyzer is labelled `fixture-signals-v1`. It is a test double with obvious seeded indicators. AI-off runs make the baseline exposure visible. Live mode uses an explicitly configured model, no tools, a fixed system message, JSON data, a three-second total deadline, and strict output validation. Known secret indicators are redacted; the prototype does not claim complete redaction, private inference, or Bedrock residency.
+
+## ADR 005: Render now, Supabase for the pilot
+
+The user's available providers are Vercel, Render, and Supabase. Prepare a single Render service with persistent storage for the prototype. Keep the browser console on the same origin. Before multiple instances or real customer state, implement PostgreSQL transactions and migrations on Supabase, move identities to authenticated memberships, and test cancellation/replay across instances.
+
+A Vercel frontend becomes useful when the console needs its own release lifecycle. The present SQLite service must not be deployed onto ephemeral serverless storage. The Supabase service credential belongs only on the backend; it must never be placed in an agent or browser bundle.
+
+## Production trust boundary still required
+
+The workload can currently call arbitrary network or shell tools outside this prototype. Strong enforcement requires a sandbox with no reusable provider credential, controlled egress, and an executor that owns the only provider access path. The real GitHub connector and in-process token broker are implemented. Broker isolation, sandboxing, and bypass verification remain release gates. The UI never labels those absent layers as enforced.
+
+## ADR 006: Real GitHub with mandatory write review
+
+The live adapter uses a server-configured repository, immutable task snapshots, typed REST operations, operation-scoped installation tokens, and no generic URL dispatch. Explicit CLI authentication is supported for a disposable local sandbox only. Every live mutation requires exact-action review regardless of analyzer results. The live executor reserves response bytes and a repository lock before I/O, consumes grants durably, and retains the lock for unknown outcomes. No SQLite transaction spans network calls. See [integration semantics and race limits](github-integration.md).

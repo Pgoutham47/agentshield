@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+data/
+tmp/
+*.sqlite*
+.DS_Store
+dist/
+
+# Original product inputs remain local; deployment contains implementation only.
+/*.pdf
+/AgentShield_Prototype_Brief.md
+/output/

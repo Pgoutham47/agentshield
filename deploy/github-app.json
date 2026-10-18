@@ -1,0 +1,16 @@
+{
+  "name": "AgentShield Pgoutham47 Pilot",
+  "description": "Task-bound authorization for a private synthetic coding-agent pilot.",
+  "url": "https://github.com/Pgoutham47/agentshield",
+  "public": false,
+  "hook_attributes": {
+    "active": false
+  },
+  "default_permissions": {
+    "contents": "write",
+    "issues": "write",
+    "pull_requests": "write",
+    "metadata": "read"
+  },
+  "default_events": []
+}
