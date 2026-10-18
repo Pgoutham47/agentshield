@@ -40,4 +40,4 @@ services:
       - key: GITHUB_AUTH_MODE
         value: app
       - key: GITHUB_ENABLE_WRITES
-        value: "false"
+        value: "true"
