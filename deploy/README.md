@@ -15,7 +15,7 @@ Status: deployed and verified on 18 October 2026. All resources created for this
 
 ## Access and credentials
 
-Open the console and choose **Continue with GitHub**. Supabase Auth signs users in; GitHub user ID `140201744` opens the existing owner workspace. New users receive isolated mock-only demo workspaces. Legacy developer, worker, reviewer, and operator tokens remain for the SDK/API; never give an agent the operator or reviewer token.
+Open the console and choose **Continue with GitHub**. Supabase Auth signs users in; GitHub user ID `140201744` opens the existing owner workspace. New users receive isolated personal workspaces and can connect their own repositories through Integrations. Legacy developer, worker, reviewer, and operator tokens remain for the SDK/API; never give an agent the operator or reviewer token.
 
 `DATABASE_URL` is stored in Render's secret environment. The App PEM is the secret file `github-app.pem`, read at `/etc/secrets/github-app.pem`. Neither belongs in Git or chat. Protected local copies of the PEM and gateway tokens are under the ignored `data/hosting/` directory for the operator's verification workflow. The database password was generated during project setup and is available inside Render's protected connection URI. Supabase API keys are not used for application database access. User login uses the project publishable key only; see [Auth setup](../docs/authentication.md).
 
@@ -36,7 +36,7 @@ The initial cloud history is fresh; older SQLite demonstration history remains l
 
 ## Operating the pilot
 
-`render.yaml` is authoritative for nonsecret configuration and stays on `plan: free`. `GITHUB_ENABLE_WRITES=true` was enabled after successful read verification; exact-action approval remains mandatory for every GitHub mutation. To stop provider writes, change it to `false` in the Blueprint and deploy. Never widen the App installation to the deployment repository or unrelated projects.
+`render.yaml` is authoritative for nonsecret configuration and stays on `plan: free`. `GITHUB_ENABLE_WRITES=true` was enabled after successful read verification; exact-action approval remains mandatory for every GitHub mutation. To stop provider writes, change it to `false` in the Blueprint and deploy. Keep the owner pilot installation restricted to its sandbox. Users choose repositories for their own installations; do not add the deployment repository during testing.
 
 To rerun the hosted verification, use a protected JSON token file with `developer`, `worker`, and `reviewer` fields:
 
@@ -66,3 +66,14 @@ GitHub sign-in through Supabase Auth is enabled and verified on the hosted conso
 Live checks confirmed owner mapping, both original tasks, one pending approval, all 72 existing audit events, and sandbox GitHub read verification. Signing out returned the login screen and protected endpoints returned 401. Signing in again restored the owner workspace. Browser local/session storage contains no authentication tokens and JavaScript cannot read the session cookie. Automated SQLite/PostgreSQL tests cover new-user isolation, forgery, expiry, refresh rotation, and concurrent logout; no additional external GitHub account was created for testing.
 
 The full implementation suite passed 167 tests in CI. See [Auth setup](../docs/authentication.md) for session behavior, configuration, and remaining team/installation scope.
+
+
+## User repository connections (2026-10-18)
+
+The executor GitHub App is public so other accounts can install it. Its exact callback is `/github/callback`, its setup return is `/github/setup`, and user access tokens expire after eight hours with refresh enabled. Render stores the App OAuth client secret separately from the Supabase sign-in OAuth credentials. All services remain on Free; no paid infrastructure or model calls were added.
+
+Implementation commit `638cd8b` passed all 179 SQLite/PostgreSQL tests in [CI](https://github.com/Pgoutham47/agentshield/actions/runs/39140675047) and deployed successfully as `dep-dbaec0p42hec73dh4sqg`.
+
+Hosted browser checks verified GitHub App authorization, installation/repository discovery, connecting the sandbox, and reading issue #1. Disconnecting the selected repository made its preview endpoint return 404. Disconnecting the whole account cleared authorization and selections. Reauthorization and repository selection worked again. These checks made no repository changes. New-account isolation, revoked permissions, public repository removal, and stale task connection IDs are covered by automated tests; an additional external account was not created.
+
+See [repository connections](../docs/repository-connections.md) for user steps, environment setup, token handling, and remaining personal-agent onboarding scope. No additional keys or account access are needed from the owner for the current setup.
